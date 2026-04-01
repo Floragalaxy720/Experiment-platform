@@ -1,42 +1,46 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>N-back Experiment</title>
-
-  <!-- jsPsych 核心 -->
-  <script src="https://unpkg.com/jspsych@7.3.0"></script>
-  <link href="https://unpkg.com/jspsych@7.3.0/css/jspsych.css" rel="stylesheet" />
-
-  <!-- 插件 -->
-  <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.2"></script>
-</head>
-
-<body></body>
-
 <script>
-  // 初始化
   const jsPsych = initJsPsych({
     on_finish: function () {
-      jsPsych.data.displayData(); // 显示数据（后面会改成发邮件）
+      const data = jsPsych.data.get().csv();
+      console.log(data);
+      jsPsych.data.displayData();
     }
   });
 
-  // N-back刺激（先用简化版）
   const stimuli = ["A", "B", "A", "C", "A", "B", "A"];
-
   let timeline = [];
 
-  stimuli.forEach(letter => {
+  for (let i = 0; i < stimuli.length; i++) {
+    let current = stimuli[i];
+    let isMatch = false;
+
+    if (i >= 2 && stimuli[i] === stimuli[i - 2]) {
+      isMatch = true;
+    }
+
     timeline.push({
       type: jsPsychHtmlKeyboardResponse,
-      stimulus: `<h1>${letter}</h1>`,
+      stimulus: `<h1>${current}</h1>`,
       choices: ["f", "j"],
-      prompt: "<p>F = match, J = no match</p>",
-      trial_duration: 1500
-    });
-  });
+      prompt: "<p>F = match (2-back), J = no match</p>",
+      trial_duration: 1500,
 
-  // 启动实验
+      data: {
+        stimulus: current,
+        match: isMatch
+      },
+
+      on_finish: function (data) {
+        if (data.response === "f" && data.match === true) {
+          data.correct = 1;
+        } else if (data.response === "j" && data.match === false) {
+          data.correct = 1;
+        } else {
+          data.correct = 0;
+        }
+      }
+    });
+  }
+
   jsPsych.run(timeline);
 </script>
-</html>
