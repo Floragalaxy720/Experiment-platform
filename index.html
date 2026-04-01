@@ -1,54 +1,84 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>N-back Experiment</title>
+  <title>N-back with Energy Ring</title>
 
+  <!-- jsPsych 核心库 -->
   <script src="jspsych.js"></script>
   <link href="jspsych.css" rel="stylesheet" />
 
+  <!-- jsPsych 插件 -->
   <script src="plugin-html-keyboard-response.js"></script>
+
+  <style>
+    body { text-align: center; font-family: Arial, sans-serif; margin-top: 50px; }
+    #energyRing {
+      width: 150px; height: 150px; border-radius: 50%;
+      border: 10px solid gray;
+      margin: 20px auto;
+      transition: border-color 0.3s;
+    }
+  </style>
 </head>
-<body></body>
 
-<script>
-  const jsPsych = initJsPsych({
-    on_finish: function () {
-      jsPsych.data.displayData();
-    }
-  });
+<body>
+  <h1>N-back Experiment + Energy Ring</h1>
+  <div id="energyRing"></div>
+  <div id="jspsych-target"></div>
 
-  const stimuli = ["A", "B", "A", "C", "A", "B", "A"];
-  let timeline = [];
-
-  for (let i = 0; i < stimuli.length; i++) {
-    let current = stimuli[i];
-    let isMatch = false;
-
-    if (i >= 2 && stimuli[i] === stimuli[i - 2]) {
-      isMatch = true;
-    }
-
-    timeline.push({
-      type: jsPsychHtmlKeyboardResponse,
-      stimulus: `<h1>${current}</h1>`,
-      choices: ["f", "j"],
-      trial_duration: 1500,
-      prompt: "<p>F = match, J = no match</p>",
-
-      data: {
-        stimulus: current,
-        match: isMatch
-      },
-
-      on_finish: function (data) {
-        data.correct =
-          (data.response === "f" && data.match) ||
-          (data.response === "j" && !data.match) ? 1 : 0;
+  <script>
+    // -----------------------
+    // 1️⃣ 初始化 jsPsych
+    // -----------------------
+    const jsPsych = initJsPsych({
+      display_element: 'jspsych-target',
+      on_finish: function() {
+        jsPsych.data.displayData(); // 先显示数据，后续改成 CSV/Email
       }
     });
-  }
 
-  jsPsych.run(timeline);
-</script>
+    // -----------------------
+    // 2️⃣ 实时能量环函数
+    // -----------------------
+    function updateEnergyRing(level) {
+      const ring = document.getElementById('energyRing');
+      // level 0~100,颜色从红->黄->绿
+      if(level < 40){
+        ring.style.borderColor = 'red';
+      } else if(level < 70){
+        ring.style.borderColor = 'yellow';
+      } else{
+        ring.style.borderColor = 'green';
+      }
+    }
+
+    // -----------------------
+    // 3️⃣ N-back trial 模拟
+    // -----------------------
+    const nBackTrials = [
+      {stimulus: 'A'}, {stimulus: 'B'}, {stimulus: 'C'}, {stimulus: 'A'}
+    ];
+
+    const nBackTimeline = nBackTrials.map(trial => ({
+      type: 'html-keyboard-response',
+      stimulus: `<p>${trial.stimulus}</p>`,
+      choices: ['a', 'l'], // a: 不匹配, l: 匹配
+      trial_duration: 1000,
+      on_finish: function(data){
+        // 随机模拟能量变化
+        const energy = Math.floor(Math.random() * 101);
+        updateEnergyRing(energy);
+
+        // 保存被试反应和能量
+        data.energy = energy;
+      }
+    }));
+
+    // -----------------------
+    // 4️⃣ 启动实验
+    // -----------------------
+    jsPsych.run(nBackTimeline);
+  </script>
+</body>
 </html>
