@@ -6,334 +6,739 @@
   <script src="jspsych.js"></script>
   <link href="jspsych.css" rel="stylesheet" />
   <script src="plugin-html-keyboard-response.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <style>
+    * { box-sizing: border-box; }
     body {
       text-align: center;
       font-family: Arial, sans-serif;
       background: #1a1a2e;
       color: white;
+      margin: 0; padding: 0;
     }
+    #jspsych-target { min-height: 100vh; }
+
     .letter-display {
       font-size: 120px;
       font-family: monospace;
       font-weight: bold;
       color: #e0e0ff;
       line-height: 1;
-      margin-top: 80px;
+      margin-top: 40px;
     }
     .instruction-box {
-      max-width: 600px;
-      margin: 60px auto;
-      font-size: 20px;
-      line-height: 1.8;
+      max-width: 620px;
+      margin: 40px auto;
+      font-size: 19px;
+      line-height: 1.9;
       background: #16213e;
       padding: 40px;
       border-radius: 12px;
+      text-align: left;
     }
-    .phase-label {
-      font-size: 14px;
-      color: #888;
-      margin-top: 20px;
-    }
+    .instruction-box h2 { text-align: center; margin-top: 0; }
+    .phase-label { font-size: 13px; color: #555; margin-top: 8px; }
+
+    /* 能量环 */
     #energyRing {
-      width: 140px;
-      height: 140px;
+      width: 110px; height: 110px;
       border-radius: 50%;
       border: 12px solid #333;
-      margin: 30px auto 0 auto;
-      transition: border-color 0.5s;
+      margin: 12px auto 0;
+      transition: border-color 0.6s;
     }
-    .fixation {
-      font-size: 60px;
-      margin-top: 100px;
-      color: #555;
+
+    /* 摄像头小窗 */
+    #cameraContainer {
+      position: fixed;
+      top: 10px; right: 10px;
+      z-index: 1000;
+      display: none;
     }
+    #camVideo {
+      width: 140px;
+      border-radius: 8px;
+      opacity: 0.75;
+      display: block;
+    }
+    #camStatus { font-size: 11px; color: #777; text-align: center; margin-top: 3px; }
+
+    /* 底部常驻按键提示 */
+    #keyHint {
+      position: fixed;
+      bottom: 16px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 7px 24px;
+      font-size: 14px; color: #999;
+      display: none;
+      z-index: 997;
+      white-space: nowrap;
+    }
+    #keyHint b { color: #ddd; }
+
+    /* 暂停遮罩 */
+    #pauseOverlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.88);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    #pauseOverlay.visible { display: flex; }
+    #pauseOverlay h2 { font-size: 32px; margin-bottom: 16px; }
+    #pauseOverlay p { font-size: 18px; color: #aaa; }
+
+    /* 加载页 */
+    #loadingScreen {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #1a1a2e;
+      z-index: 3000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    #loadingScreen h2 { font-size: 24px; margin-bottom: 20px; }
+    #loadingStatus { font-size: 16px; color: #888; margin-bottom: 30px; }
+    #startBtn {
+      display: none;
+      padding: 14px 40px;
+      font-size: 18px;
+      background: #3498db; color: white;
+      border: none; border-radius: 8px; cursor: pointer;
+    }
+    #startBtn:hover { background: #2980b9; }
+
+    /* 完成页 */
+    #completionScreen {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #1a1a2e;
+      z-index: 2500;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    #completionScreen.visible { display: flex; }
+    .completion-box {
+      background: #16213e;
+      border-radius: 16px;
+      padding: 48px;
+      max-width: 500px;
+      text-align: center;
+    }
+    .code-display {
+      font-size: 38px;
+      font-family: monospace;
+      letter-spacing: 4px;
+      color: #f39c12;
+      background: rgba(243,156,18,0.1);
+      border: 2px solid #f39c12;
+      border-radius: 8px;
+      padding: 12px 24px;
+      margin: 20px 0;
+      display: inline-block;
+    }
+    .reward-buttons {
+      display: flex; gap: 16px;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    .reward-btn {
+      padding: 12px 28px; font-size: 16px;
+      border: none; border-radius: 8px;
+      cursor: pointer; font-weight: bold;
+    }
+    .btn-cash { background: #2ecc71; color: #1a1a2e; }
+    .btn-gift { background: #e74c3c; color: white; }
+    .fixation { font-size: 60px; margin-top: 80px; color: #555; }
   </style>
 </head>
 <body>
-  <div id="jspsych-target"></div>
 
-  <script>
-  // =====================================================
-  // 0. 基础配置
-  // =====================================================
-  const N_BACK = 2;
-  const LETTERS = ['B', 'C', 'D', 'F', 'G', 'H', 'J', 'K']; // 8个辅音字母
-  const STIM_DURATION = 500;   // 字母显示时长 ms
-  const TRIAL_DURATION = 2000; // 每个trial总时长 ms（含空白ISI）
-  const TARGET_RATE = 0.33;    // 约33%的trial是匹配目标
+<!-- 加载页 -->
+<div id="loadingScreen">
+  <h2>⏳ 正在加载实验资源...</h2>
+  <div id="loadingStatus">初始化中...</div>
+  <button id="startBtn" onclick="startExperiment()">▶ 开始实验</button>
+</div>
 
-  // 每分钟trial数 = 60000ms / 2000ms = 30个
-  // 各阶段trial数：
-  const BLOCK_TRIALS = {
-    warmup:    30,   // 热身 1min (1-back)
-    highload:  60,   // 高负荷 2min
-    drift:     60,   // 自然漂移 2min
-    blockA:    45,   // Block A 1.5min
-    blockB:    30,   // Block B 1min
-    blockC:    60,   // Block C 2min
-    blockD1:   90,   // Block D-1 3min
-    blockD2:   90,   // Block D-2 3min
-  };
+<!-- 摄像头小窗 -->
+<div id="cameraContainer">
+  <video id="camVideo" autoplay muted playsinline></video>
+  <div id="camStatus">● 摄像头运行中</div>
+</div>
 
-  // =====================================================
-  // 1. 序列生成函数
-  // =====================================================
-  function generateSequence(numTrials, nBack, targetRate) {
-    const sequence = [];
-    const isTarget = [];
+<!-- 底部按键提示 -->
+<div id="keyHint">
+  <b>F</b> 不匹配 &nbsp;|&nbsp; <b>J</b> 匹配 &nbsp;|&nbsp; <b>Esc</b> 暂停
+</div>
 
-    for (let i = 0; i < numTrials; i++) {
-      if (i >= nBack && Math.random() < targetRate) {
-        // 目标trial：复现n个之前的字母
-        sequence.push(sequence[i - nBack]);
-        isTarget.push(true);
-      } else {
-        // 非目标trial：选一个不等于n-back位置的字母
-        let letter;
-        let attempts = 0;
-        do {
-          letter = LETTERS[Math.floor(Math.random() * LETTERS.length)];
-          attempts++;
-        } while (i >= nBack && letter === sequence[i - nBack] && attempts < 20);
-        sequence.push(letter);
-        isTarget.push(false);
-      }
+<!-- 暂停遮罩 -->
+<div id="pauseOverlay">
+  <h2>⏸ 实验已暂停</h2>
+  <p>准备好后，按 <b>空格键</b> 继续</p>
+</div>
+
+<!-- jsPsych 容器 -->
+<div id="jspsych-target"></div>
+
+<!-- 完成页 -->
+<div id="completionScreen">
+  <div class="completion-box">
+    <h2>🎉 实验完成！</h2>
+    <p>感谢你的参与！请截图保存你的专属码：</p>
+    <div class="code-display" id="codeDisplay">----</div>
+    <p style="font-size:14px;color:#888">添加微信时请出示此码以兑换奖励</p>
+    <p style="margin-top:24px;font-size:17px">请选择你的奖励：</p>
+    <div class="reward-buttons">
+      <button class="reward-btn btn-cash" onclick="selectReward('cash')">💰 10元红包</button>
+      <button class="reward-btn btn-gift" onclick="selectReward('gift')">🎁 纪念品盲盒</button>
+    </div>
+    <p id="rewardConfirm" style="margin-top:16px;color:#2ecc71;display:none;font-size:15px"></p>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// 全局状态
+// ============================================================
+const state = {
+  cameraReady: false,
+  video: null,
+
+  // 眨眼
+  EAR_THRESHOLD: 0.21,
+  EAR_CONSEC: 2,
+  earBelowCount: 0,
+  blinkTimestamps: [],
+  blinkRate: 0,
+
+  // 头部姿态
+  headYaw: 0,
+  headPitch: 0,
+
+  // 键盘节律
+  rtHistory: [],
+  rtCV: 0,
+
+  // 能量
+  energyLevel: 50,
+  currentBlock: 'none',
+
+  // 暂停
+  paused: false,
+  pauseLog: [],
+  pauseStart: null,
+
+  // 完成
+  completionCode: null,
+  rewardChoice: null,
+};
+
+// ============================================================
+// 工具
+// ============================================================
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function generateCode() {
+  const n = Math.floor(1000 + Math.random() * 9000);
+  const alpha = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const l = alpha[Math.floor(Math.random() * alpha.length)];
+  return `NB-${n}-${l}`;
+}
+
+// EAR（眼纵横比）
+function calcEAR(pts) {
+  const A = Math.hypot(pts[1].x - pts[5].x, pts[1].y - pts[5].y);
+  const B = Math.hypot(pts[2].x - pts[4].x, pts[2].y - pts[4].y);
+  const C = Math.hypot(pts[0].x - pts[3].x, pts[0].y - pts[3].y);
+  return C < 1 ? 1 : (A + B) / (2 * C);
+}
+
+// ============================================================
+// 摄像头初始化
+// ============================================================
+async function initCamera() {
+  const video = document.getElementById('camVideo');
+  state.video = video;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 320, height: 240, facingMode: 'user' }
+    });
+    video.srcObject = stream;
+    await new Promise(res => { video.onloadedmetadata = res; });
+    state.cameraReady = true;
+    document.getElementById('cameraContainer').style.display = 'block';
+    startDetectionLoop();
+    return true;
+  } catch(e) {
+    console.warn('摄像头初始化失败:', e);
+    document.getElementById('camStatus').textContent = '⚠ 摄像头不可用';
+    return false;
+  }
+}
+
+// ============================================================
+// 面部检测循环
+// ============================================================
+function startDetectionLoop() {
+  async function detect() {
+    if (!state.cameraReady || state.paused) {
+      requestAnimationFrame(detect); return;
     }
-    return { sequence, isTarget };
-  }
+    try {
+      const det = await faceapi
+        .detectSingleFace(state.video,
+          new faceapi.TinyFaceDetectorOptions({ inputSize: 160 }))
+        .withFaceLandmarks();
 
-  // =====================================================
-  // 2. 生成所有阶段的序列（页面加载时一次性生成）
-  // =====================================================
-  const sequences = {
-    warmup:   generateSequence(BLOCK_TRIALS.warmup,   1, TARGET_RATE), // 热身用1-back
-    highload: generateSequence(BLOCK_TRIALS.highload,  2, TARGET_RATE),
-    drift:    generateSequence(BLOCK_TRIALS.drift,     2, TARGET_RATE),
-    blockA:   generateSequence(BLOCK_TRIALS.blockA,    2, TARGET_RATE),
-    blockB:   generateSequence(BLOCK_TRIALS.blockB,    2, TARGET_RATE),
-    blockC:   generateSequence(BLOCK_TRIALS.blockC,    2, TARGET_RATE),
-    blockD1:  generateSequence(BLOCK_TRIALS.blockD1,   2, TARGET_RATE),
-    blockD2:  generateSequence(BLOCK_TRIALS.blockD2,   2, TARGET_RATE),
-  };
+      if (det) {
+        const lm = det.landmarks.positions;
 
-  // =====================================================
-  // 3. 能量环更新（后续接真实数据，现在用随机）
-  // =====================================================
-  let energyRingEl = null;
-  function updateEnergyRing(level) {
-    if (!energyRingEl) energyRingEl = document.getElementById('energyRing');
-    if (!energyRingEl) return;
-    if (level < 40) energyRingEl.style.borderColor = '#e74c3c';
-    else if (level < 70) energyRingEl.style.borderColor = '#f39c12';
-    else energyRingEl.style.borderColor = '#2ecc71';
-  }
+        // ── 眨眼 ──
+        const leftEye  = [lm[36],lm[37],lm[38],lm[39],lm[40],lm[41]];
+        const rightEye = [lm[42],lm[43],lm[44],lm[45],lm[46],lm[47]];
+        const ear = (calcEAR(leftEye) + calcEAR(rightEye)) / 2;
 
-  // =====================================================
-  // 4. 创建N-back trial列表
-  // =====================================================
-  function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
-    const { sequence, isTarget } = seqObj;
-    const trials = [];
-
-    sequence.forEach((letter, i) => {
-      // 注视点（+）
-      trials.push({
-        type: jsPsychHtmlKeyboardResponse,
-        stimulus: '<div class="fixation">+</div>',
-        choices: 'NO_KEYS',
-        trial_duration: 300,
-        data: { phase: blockName, trial_type: 'fixation' }
-      });
-
-      // 字母刺激
-      trials.push({
-        type: jsPsychHtmlKeyboardResponse,
-        stimulus: function() {
-          return `
-            <div class="letter-display">${letter}</div>
-            <div class="phase-label">${blockName} | Trial ${i+1}/${sequence.length}</div>
-            <div id="energyRing"></div>
-          `;
-        },
-        choices: ['a', 'l'],
-        trial_duration: TRIAL_DURATION,
-        stimulus_duration: STIM_DURATION,
-        on_start: function() {
-          // 能量环随机（后续替换为真实算法）
-          setTimeout(() => updateEnergyRing(Math.random() * 100), 100);
-        },
-        on_finish: function(data) {
-          const responded = data.response !== null;
-          const correct =
-            (isTarget[i] && data.response === 'l') ||
-            (!isTarget[i] && (data.response === 'a' || !responded));
-
-          data.phase = blockName;
-          data.trial_index_in_block = i;
-          data.letter = letter;
-          data.is_target = isTarget[i];
-          data.responded = responded;
-          data.correct = correct;
-          data.rt = data.rt;
+        if (ear < state.EAR_THRESHOLD) {
+          state.earBelowCount++;
+        } else {
+          if (state.earBelowCount >= state.EAR_CONSEC) {
+            state.blinkTimestamps.push(Date.now());
+          }
+          state.earBelowCount = 0;
         }
-      });
+        const now = Date.now();
+        state.blinkTimestamps = state.blinkTimestamps.filter(t => now - t < 60000);
+        state.blinkRate = state.blinkTimestamps.length;
 
-      // 练习阶段的即时反馈
-      if (showFeedback) {
-        trials.push({
-          type: jsPsychHtmlKeyboardResponse,
-          stimulus: function() {
-            const last = jsPsych.data.get().last(1).values()[0];
-            const color = last.correct ? '#2ecc71' : '#e74c3c';
-            const text = last.correct ? '✓ 正确' : '✗ 错误';
-            return `<div style="font-size:50px; color:${color}; margin-top:100px">${text}</div>`;
-          },
-          choices: 'NO_KEYS',
-          trial_duration: 500,
-          data: { phase: blockName, trial_type: 'feedback' }
-        });
+        // ── 头部姿态 ──
+        const nose  = lm[30];
+        const lOuter = lm[36], rOuter = lm[45];
+        const cx = (lOuter.x + rOuter.x) / 2;
+        const cy = (lOuter.y + rOuter.y) / 2;
+        const fw = Math.abs(rOuter.x - lOuter.x);
+        const fh = det.detection.box.height;
+        state.headYaw   = fw > 5 ? (nose.x - cx) / (fw / 2) : 0;
+        state.headPitch = fh > 5 ? (nose.y - cy) / (fh / 2) : 0;
+      }
+    } catch(e) { /* 跳过异常帧 */ }
+
+    updateEnergy();
+    requestAnimationFrame(detect);
+  }
+  detect();
+}
+
+// ============================================================
+// 能量计算与更新
+// ============================================================
+function computeEnergy() {
+  const b = state.currentBlock;
+  if (b === 'Block_A') {
+    // 眨眼率：10次/min → 100分，25+次/min → 0分
+    return clamp(100 - (state.blinkRate - 10) / 15 * 100, 0, 100);
+  }
+  if (b === 'Block_B') {
+    // 头部稳定性：完全静止→100，|yaw|+|pitch|≥1→0
+    const instability = Math.abs(state.headYaw) + Math.abs(state.headPitch);
+    return clamp(100 - instability / 1.0 * 100, 0, 100);
+  }
+  if (b === 'Block_C') {
+    // RT变异系数：CV=0.1→100，CV≥0.5→0
+    return clamp(100 - (state.rtCV - 0.1) / 0.4 * 100, 0, 100);
+  }
+  if (b === 'Block_D1' || b === 'Block_D2') {
+    const eBlink = clamp(100 - (state.blinkRate - 10) / 15 * 100, 0, 100);
+    const eHead  = clamp(100 - (Math.abs(state.headYaw) + Math.abs(state.headPitch)) * 100, 0, 100);
+    const eRT    = clamp(100 - (state.rtCV - 0.1) / 0.4 * 100, 0, 100);
+    return (eBlink + eHead + eRT) / 3;
+  }
+  return 50; // 其他阶段显示中性
+}
+
+function updateEnergy() {
+  state.energyLevel = computeEnergy();
+  const ring = document.getElementById('energyRing');
+  if (!ring) return;
+  if (state.energyLevel < 35)      ring.style.borderColor = '#e74c3c';
+  else if (state.energyLevel < 65) ring.style.borderColor = '#f39c12';
+  else                              ring.style.borderColor = '#2ecc71';
+}
+
+// ============================================================
+// 键盘节律（RT滚动窗口）
+// ============================================================
+function updateRTHistory(rt) {
+  if (rt == null) return;
+  state.rtHistory.push(rt);
+  if (state.rtHistory.length > 20) state.rtHistory.shift();
+  if (state.rtHistory.length >= 5) {
+    const mean = state.rtHistory.reduce((a,b)=>a+b,0) / state.rtHistory.length;
+    const std  = Math.sqrt(
+      state.rtHistory.map(x=>(x-mean)**2).reduce((a,b)=>a+b,0) / state.rtHistory.length
+    );
+    state.rtCV = mean > 0 ? std / mean : 0;
+  }
+}
+
+// ============================================================
+// 暂停机制
+// ============================================================
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !state.paused) {
+    state.paused = true;
+    state.pauseStart = Date.now();
+    document.getElementById('pauseOverlay').classList.add('visible');
+    document.getElementById('keyHint').style.display = 'none';
+  }
+  if (e.key === ' ' && state.paused) {
+    state.paused = false;
+    if (state.pauseStart) {
+      state.pauseLog.push({ start: state.pauseStart, end: Date.now() });
+      state.pauseStart = null;
+    }
+    document.getElementById('pauseOverlay').classList.remove('visible');
+    document.getElementById('keyHint').style.display = 'block';
+  }
+});
+
+// ============================================================
+// 奖励选择
+// ============================================================
+function selectReward(type) {
+  state.rewardChoice = type;
+  const label = type === 'cash' ? '10元红包' : '纪念品盲盒';
+  const el = document.getElementById('rewardConfirm');
+  el.style.display = 'block';
+  el.textContent = `✓ 已选择：${label}。请截图后添加微信兑换。`;
+  try {
+    jsPsych.data.addProperties({ reward_choice: type });
+  } catch(e) {}
+}
+
+// ============================================================
+// 序列生成
+// ============================================================
+const LETTERS = ['B','C','D','F','G','H','J','K'];
+const STIM_DURATION  = 500;
+const TRIAL_DURATION = 2000;
+const TARGET_RATE    = 0.33;
+
+const BLOCK_TRIALS = {
+  warmup: 30, highload: 60, drift: 60,
+  blockA: 45, blockB: 30,  blockC: 60,
+  blockD1: 90, blockD2: 90,
+};
+
+function generateSequence(numTrials, nBack, targetRate) {
+  const sequence = [], isTarget = [];
+  for (let i = 0; i < numTrials; i++) {
+    if (i >= nBack && Math.random() < targetRate) {
+      sequence.push(sequence[i - nBack]);
+      isTarget.push(true);
+    } else {
+      let letter, attempts = 0;
+      do {
+        letter = LETTERS[Math.floor(Math.random() * LETTERS.length)];
+        attempts++;
+      } while (i >= nBack && letter === sequence[i - nBack] && attempts < 20);
+      sequence.push(letter); isTarget.push(false);
+    }
+  }
+  return { sequence, isTarget };
+}
+
+const sequences = {
+  warmup:   generateSequence(BLOCK_TRIALS.warmup,   1, TARGET_RATE),
+  highload: generateSequence(BLOCK_TRIALS.highload,  2, TARGET_RATE),
+  drift:    generateSequence(BLOCK_TRIALS.drift,     2, TARGET_RATE),
+  blockA:   generateSequence(BLOCK_TRIALS.blockA,    2, TARGET_RATE),
+  blockB:   generateSequence(BLOCK_TRIALS.blockB,    2, TARGET_RATE),
+  blockC:   generateSequence(BLOCK_TRIALS.blockC,    2, TARGET_RATE),
+  blockD1:  generateSequence(BLOCK_TRIALS.blockD1,   2, TARGET_RATE),
+  blockD2:  generateSequence(BLOCK_TRIALS.blockD2,   2, TARGET_RATE),
+};
+
+// ============================================================
+// N-back block 构建
+// ============================================================
+function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
+  const { sequence, isTarget } = seqObj;
+  const trials = [];
+
+  sequence.forEach((letter, i) => {
+    // 注视点
+    trials.push({
+      type: jsPsychHtmlKeyboardResponse,
+      stimulus: '<div class="fixation">+</div>',
+      choices: 'NO_KEYS',
+      trial_duration: 300,
+      on_start: function() {
+        state.currentBlock = blockName;
+        document.getElementById('keyHint').style.display = 'block';
+      },
+      data: { phase: blockName, trial_type_custom: 'fixation' }
+    });
+
+    // 字母刺激
+    trials.push({
+      type: jsPsychHtmlKeyboardResponse,
+      stimulus: function() {
+        return `
+          <div class="letter-display">${letter}</div>
+          <div class="phase-label">${blockName} &nbsp;|&nbsp; ${i+1} / ${sequence.length}</div>
+          <div id="energyRing"></div>
+        `;
+      },
+      choices: ['f','j'],
+      trial_duration: TRIAL_DURATION,
+      stimulus_duration: STIM_DURATION,
+      on_finish: function(data) {
+        const responded = data.response !== null;
+        const correct =
+          ( isTarget[i] && data.response === 'j') ||
+          (!isTarget[i] && data.response === 'f');
+
+        data.phase             = blockName;
+        data.trial_index_block = i;
+        data.letter            = letter;
+        data.is_target         = isTarget[i];
+        data.responded         = responded;
+        data.correct           = correct;
+        data.blink_rate        = state.blinkRate;
+        data.head_yaw          = +state.headYaw.toFixed(3);
+        data.head_pitch        = +state.headPitch.toFixed(3);
+        data.rt_cv             = +state.rtCV.toFixed(3);
+        data.energy            = +state.energyLevel.toFixed(1);
+        data.was_paused        = state.pauseLog.length > 0 &&
+          state.pauseLog.some(p => data.time_elapsed >= p.start && data.time_elapsed <= p.end);
+
+        if (responded) updateRTHistory(data.rt);
       }
     });
 
-    return trials;
-  }
-
-  // =====================================================
-  // 5. 指导语模板
-  // =====================================================
-  function makeInstruction(htmlContent, key = ' ') {
-    return {
-      type: jsPsychHtmlKeyboardResponse,
-      stimulus: `<div class="instruction-box">${htmlContent}<br><br><span style="color:#888;font-size:16px">按空格键继续</span></div>`,
-      choices: [key],
-    };
-  }
-
-  // =====================================================
-  // 6. 休息阶段
-  // =====================================================
-  function makeRest(seconds, label) {
-    return {
-      type: jsPsychHtmlKeyboardResponse,
-      stimulus: `
-        <div class="instruction-box">
-          <p style="font-size:28px">🕐 ${label}</p>
-          <p>请闭眼休息 ${seconds} 秒</p>
-          <p style="color:#888;font-size:16px">休息结束后按空格键继续</p>
-        </div>`,
-      choices: [' '],
-    };
-  }
-
-  // =====================================================
-  // 7. 组装完整实验 Timeline
-  // =====================================================
-  const jsPsych = initJsPsych({
-    display_element: 'jspsych-target',
-    on_finish: function() {
-      // 暂时显示数据，Step 9 改成 EmailJS 发送
-      const data = jsPsych.data.get().filter({ trial_type: 'html-keyboard-response' });
-      console.log('实验结束，数据条数:', data.count());
-      jsPsych.data.displayData('csv');
+    // 热身反馈
+    if (showFeedback) {
+      trials.push({
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: function() {
+          const last = jsPsych.data.get().last(1).values()[0];
+          const ok = last && last.correct;
+          return `<div style="font-size:52px;margin-top:80px;color:${ok?'#2ecc71':'#e74c3c'}">${ok?'✓ 正确':'✗ 错误'}</div>`;
+        },
+        choices: 'NO_KEYS',
+        trial_duration: 500,
+        data: { phase: blockName, trial_type_custom: 'feedback' }
+      });
     }
   });
 
-  const timeline = [];
+  return trials;
+}
+
+// ============================================================
+// 指导语 / 休息
+// ============================================================
+function makeInstruction(html) {
+  return {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: `<div class="instruction-box">${html}
+      <br><p style="text-align:center;font-size:15px;color:#555">按 空格键 继续</p></div>`,
+    choices: [' '],
+    on_start: function() {
+      document.getElementById('keyHint').style.display = 'none';
+    }
+  };
+}
+
+function makeRest(label) {
+  return {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: `
+      <div class="instruction-box" style="text-align:center">
+        <h2>🕐 ${label}</h2>
+        <p>请<strong>闭眼休息</strong>，放松面部和颈部肌肉。</p>
+        <p style="color:#888">准备好后按 空格键 继续</p>
+      </div>`,
+    choices: [' '],
+    on_start: function() {
+      state.currentBlock = 'rest';
+      document.getElementById('keyHint').style.display = 'none';
+    }
+  };
+}
+
+// ============================================================
+// 组装 Timeline
+// ============================================================
+let jsPsych;
+
+function buildTimeline() {
+  const tl = [];
 
   // ── 全局指导语 ──
-  timeline.push(makeInstruction(`
+  tl.push(makeInstruction(`
     <h2>欢迎参加本实验</h2>
-    <p>本实验共约 <strong>17.5 分钟</strong>，请保持专注。</p>
-    <p>实验过程中需要开启摄像头，请允许浏览器访问。</p>
-    <p>你将看到屏幕中央出现一系列字母，<br>
-    每次出现时请判断：<br>
-    这个字母是否与 <strong>2个之前</strong> 的字母相同？</p>
-    <p>🔵 相同（目标）→ 按 <strong>L</strong><br>
-    🔴 不同（非目标）→ 按 <strong>A</strong></p>
+    <p>本实验共约 <strong>17.5 分钟</strong>，请在安静、光线充足的环境中完成。</p>
+    <p>实验要求你 <strong>全程保持专注</strong>，请提前关闭无关应用，避免打扰。</p>
+    <hr style="border-color:#333;margin:18px 0">
+    <p><strong>任务说明：</strong>屏幕中央会依次出现一系列字母，你需要判断当前字母是否与<strong>若干个之前</strong>的字母相同。</p>
+    <p style="background:#0d1b2a;padding:14px;border-radius:8px;text-align:center">
+      🟦 相同（目标）→ 按 <strong>J</strong> 键<br>
+      🟥 不同（非目标）→ 按 <strong>F</strong> 键
+    </p>
+    <p>具体规则（间隔几个字母）将在每个阶段开始前说明。</p>
+    <p style="font-size:14px;color:#666">
+      ⚠ 如遇紧急情况（如需短暂离座），可按 <b>Esc</b> 暂停。
+      非必要请勿使用，暂停会影响数据质量。
+    </p>
   `));
 
-  // ── 热身阶段（1-back + 反馈，可跳过）──
-  timeline.push(makeInstruction(`
-    <h2>🔥 热身阶段（1-back）</h2>
-    <p>现在是 <strong>1-back</strong>：判断字母是否与<strong>上一个</strong>相同。</p>
-    <p>此阶段有即时反馈，帮助你熟悉操作。</p>
-    <p>按空格开始，或按 <strong>S</strong> 键跳过热身。</p>
-  `, ' '));
+  // ── 热身：1-back ──
+  tl.push(makeInstruction(`
+    <h2>🔥 热身阶段（约1分钟）</h2>
+    <p>热身使用 <strong>1-back</strong> 规则：</p>
+    <p style="text-align:center;background:#0d1b2a;padding:12px;border-radius:8px">
+      判断当前字母是否与<strong>紧邻的上一个</strong>字母相同
+    </p>
+    <p>示例：B → <span style="color:#f39c12;font-weight:bold">B</span>（相同，按 J）&emsp;B → C（不同，按 F）</p>
+    <p>本阶段有 <strong>即时正误反馈</strong>，帮助你熟悉操作节奏。</p>
+    <p style="color:#888;font-size:15px">⚠ 热身数据不计入正式分析。</p>
+  `));
+  tl.push(...createNBackBlock(sequences.warmup, '热身(1-back)', true, 1));
 
-  // 热身trials（1-back，有反馈）
-  const warmupTrials = createNBackBlock(sequences.warmup, '热身(1-back)', true, 1);
-  timeline.push(...warmupTrials);
-
-  // ── 高负荷阶段 ──
-  timeline.push(makeInstruction(`
-    <h2>⚡ 阶段一：高负荷（2-back）</h2>
-    <p>现在切换到 <strong>2-back</strong>：判断是否与 <strong>2个之前</strong> 的字母相同。</p>
+  // ── 高负荷：切换到2-back ──
+  tl.push(makeInstruction(`
+    <h2>⚡ 正式开始：切换到 2-back</h2>
+    <p>从现在起使用 <strong>2-back</strong> 规则：</p>
+    <p style="text-align:center;background:#0d1b2a;padding:12px;border-radius:8px">
+      判断当前字母是否与 <strong>2个之前</strong> 的字母相同
+    </p>
+    <p>示例：B → C → <span style="color:#f39c12;font-weight:bold">B</span>（与2个前的B相同，按 J）</p>
     <p>此阶段 <strong>无反馈</strong>，请尽力作答。</p>
   `));
-  timeline.push(...createNBackBlock(sequences.highload, '高负荷', false, 2));
+  tl.push(...createNBackBlock(sequences.highload, '高负荷', false, 2));
 
-  // ── 自然漂移窗口 ──
-  timeline.push(makeInstruction(`
-    <h2>📊 阶段二：自然漂移窗口</h2>
-    <p>继续 2-back 任务，保持正常节奏。</p>
-    <p>系统将在此阶段建立你的基准状态。</p>
+  // ── 漂移窗口 ──
+  tl.push(makeInstruction(`
+    <h2>📊 状态基准采集（约2分钟）</h2>
+    <p>继续 2-back 任务，保持自然节奏。</p>
+    <p>系统将在此阶段记录你的状态基准，用于后续个体化校准。</p>
   `));
-  timeline.push(...createNBackBlock(sequences.drift, '漂移窗口', false, 2));
+  tl.push(...createNBackBlock(sequences.drift, '漂移窗口', false, 2));
 
-  // ── Block A：仅眨眼频率 ──
-  timeline.push(makeInstruction(`
-    <h2>Block A</h2>
-    <p>继续 2-back 任务（约1.5分钟）。</p>
-    <p>能量环将根据你的<strong>眨眼频率</strong>变化。</p>
+  // ── Block A ──
+  tl.push(makeInstruction(`
+    <h2>Block A（约1.5分钟）</h2>
+    <p>继续 2-back 任务。</p>
+    <p>能量环将根据你的 <strong>眨眼频率</strong> 实时变化。</p>
   `));
-  timeline.push(...createNBackBlock(sequences.blockA, 'Block_A', false, 2));
+  tl.push(...createNBackBlock(sequences.blockA, 'Block_A', false, 2));
 
-  // ── Block B：仅头部姿态 ──
-  timeline.push(makeInstruction(`
-    <h2>Block B</h2>
-    <p>继续 2-back 任务（约1分钟）。</p>
-    <p>能量环将根据你的<strong>头部姿态</strong>变化。</p>
+  // ── Block B ──
+  tl.push(makeInstruction(`
+    <h2>Block B（约1分钟）</h2>
+    <p>继续 2-back 任务。</p>
+    <p>能量环将根据你的 <strong>头部姿态稳定性</strong> 实时变化。</p>
   `));
-  timeline.push(...createNBackBlock(sequences.blockB, 'Block_B', false, 2));
+  tl.push(...createNBackBlock(sequences.blockB, 'Block_B', false, 2));
 
-  // ── Block C：仅键盘节律 ──
-  timeline.push(makeInstruction(`
-    <h2>Block C</h2>
-    <p>继续 2-back 任务（约2分钟）。</p>
-    <p>能量环将根据你的<strong>按键节律</strong>变化。</p>
+  // ── Block C ──
+  tl.push(makeInstruction(`
+    <h2>Block C（约2分钟）</h2>
+    <p>继续 2-back 任务。</p>
+    <p>能量环将根据你的 <strong>按键节律稳定性</strong> 实时变化。</p>
   `));
-  timeline.push(...createNBackBlock(sequences.blockC, 'Block_C', false, 2));
+  tl.push(...createNBackBlock(sequences.blockC, 'Block_C', false, 2));
 
-  // ── Block D-1：三信号融合 ──
-  timeline.push(makeInstruction(`
-    <h2>Block D-1：三信号融合</h2>
-    <p>继续 2-back 任务（约3分钟）。</p>
-    <p>能量环现在综合<strong>眨眼 + 头部 + 按键</strong>三种信号。</p>
+  // ── Block D-1 ──
+  tl.push(makeInstruction(`
+    <h2>Block D-1（约3分钟）</h2>
+    <p>继续 2-back 任务。</p>
+    <p>能量环现在综合 <strong>眨眼 + 头部 + 按键</strong> 三种信号实时变化。</p>
   `));
-  timeline.push(...createNBackBlock(sequences.blockD1, 'Block_D1', false, 2));
+  tl.push(...createNBackBlock(sequences.blockD1, 'Block_D1', false, 2));
 
   // ── 清洗期 ──
-  timeline.push(makeRest(60, '清洗期休息'));
+  tl.push(makeRest('清洗期休息（约1分钟）'));
 
-  // ── Block D-2：三信号融合对照 ──
-  timeline.push(makeInstruction(`
-    <h2>Block D-2：对照条件</h2>
-    <p>最后一段 2-back 任务（约3分钟）。</p>
+  // ── Block D-2 ──
+  tl.push(makeInstruction(`
+    <h2>Block D-2（约3分钟）</h2>
+    <p>最后一段 2-back 任务，三信号融合对照条件。</p>
+    <p>请保持与之前相同的认真态度完成。</p>
   `));
-  timeline.push(...createNBackBlock(sequences.blockD2, 'Block_D2', false, 2));
+  tl.push(...createNBackBlock(sequences.blockD2, 'Block_D2', false, 2));
 
   // ── 结束占位（Step 10 替换为 NASA-TLX）──
-  timeline.push(makeInstruction(`
-    <h2>🎉 实验完成！</h2>
-    <p>感谢你的参与。</p>
-    <p>数据正在提交，请稍候...</p>
-    <p>（问卷将在下一步骤中加入）</p>
+  tl.push(makeInstruction(`
+    <h2>任务部分完成！🙏</h2>
+    <p>感谢你的坚持。</p>
+    <p>接下来是一份简短的主观评估问卷（约1分钟），完成后即可领取奖励。</p>
+    <p style="color:#888;font-size:15px">（问卷将在下一步加入）</p>
   `));
 
-  // ── 启动 ──
-  jsPsych.run(timeline);
+  return tl;
+}
 
-  </script>
+// ============================================================
+// 实验启动
+// ============================================================
+async function startExperiment() {
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('loadingScreen').style.display = 'none';
+
+  jsPsych = initJsPsych({
+    display_element: 'jspsych-target',
+    on_finish: function() {
+      state.completionCode = generateCode();
+      jsPsych.data.addProperties({
+        completion_code: state.completionCode,
+        pause_count: state.pauseLog.length,
+        total_pause_ms: state.pauseLog.reduce((s,p)=>s+(p.end-p.start),0),
+      });
+
+      document.getElementById('codeDisplay').textContent = state.completionCode;
+      document.getElementById('completionScreen').classList.add('visible');
+      document.getElementById('keyHint').style.display = 'none';
+
+      // Step 9 在此处添加 EmailJS
+      console.log('完成！数据条数:', jsPsych.data.get().count());
+    }
+  });
+
+  jsPsych.run(buildTimeline());
+}
+
+// ============================================================
+// 页面加载：先加载模型，再显示开始按钮
+// ============================================================
+window.addEventListener('load', async () => {
+  const status = document.getElementById('loadingStatus');
+  try {
+    status.textContent = '正在加载人脸检测模型 (1/2)...';
+    await faceapi.nets.tinyFaceDetector.loadFromUri('./models');
+    status.textContent = '正在加载人脸关键点模型 (2/2)...';
+    await faceapi.nets.faceLandmark68Net.loadFromUri('./models');
+    status.textContent = '正在申请摄像头权限...';
+    await initCamera();
+    status.textContent = '✅ 准备就绪';
+  } catch(e) {
+    console.error('初始化失败:', e);
+    status.textContent = '⚠ 摄像头不可用，实验仍可继续（无生理指标）';
+  }
+  document.getElementById('startBtn').style.display = 'inline-block';
+});
+</script>
 </body>
 </html>
