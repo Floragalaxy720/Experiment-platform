@@ -6,6 +6,7 @@
   <script src="jspsych.js"></script>
   <link href="jspsych.css" rel="stylesheet" />
   <script src="plugin-html-keyboard-response.js"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-survey-html-form@1.0.3/dist/index.browser.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <style>
     * { box-sizing: border-box; }
@@ -27,16 +28,23 @@
       margin-top: 40px;
     }
     .instruction-box {
-      max-width: 620px;
-      margin: 40px auto;
-      font-size: 19px;
+      max-width: 640px;
+      margin: 30px auto;
+      font-size: 18px;
       line-height: 1.9;
       background: #16213e;
-      padding: 40px;
+      padding: 36px 44px;
       border-radius: 12px;
       text-align: left;
     }
     .instruction-box h2 { text-align: center; margin-top: 0; }
+    .highlight-box {
+      background: #0d1b2a;
+      padding: 12px 18px;
+      border-radius: 8px;
+      text-align: center;
+      margin: 10px 0;
+    }
     .phase-label { font-size: 13px; color: #555; margin-top: 8px; }
 
     /* 能量环 */
@@ -63,7 +71,7 @@
     }
     #camStatus { font-size: 11px; color: #777; text-align: center; margin-top: 3px; }
 
-    /* 底部常驻按键提示 */
+    /* 底部按键提示 */
     #keyHint {
       position: fixed;
       bottom: 16px; left: 50%;
@@ -78,6 +86,28 @@
       white-space: nowrap;
     }
     #keyHint b { color: #ddd; }
+
+    /* 能量环图例（右下角） */
+    #ringLegend {
+      position: fixed;
+      bottom: 16px; right: 16px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 12px; color: #888;
+      display: none;
+      z-index: 997;
+      line-height: 1.8;
+      text-align: left;
+    }
+    .ring-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
 
     /* 暂停遮罩 */
     #pauseOverlay {
@@ -109,7 +139,7 @@
     #loadingStatus { font-size: 16px; color: #888; margin-bottom: 30px; }
     #startBtn {
       display: none;
-      padding: 14px 40px;
+      padding: 14px 44px;
       font-size: 18px;
       background: #3498db; color: white;
       border: none; border-radius: 8px; cursor: pointer;
@@ -123,20 +153,20 @@
       top: 0; left: 0; right: 0; bottom: 0;
       background: #1a1a2e;
       z-index: 2500;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
+      overflow-y: auto;
+      padding: 40px 16px;
     }
-    #completionScreen.visible { display: flex; }
+    #completionScreen.visible { display: block; }
     .completion-box {
       background: #16213e;
       border-radius: 16px;
-      padding: 48px;
-      max-width: 500px;
+      padding: 44px;
+      max-width: 520px;
+      margin: 0 auto;
       text-align: center;
     }
     .code-display {
-      font-size: 38px;
+      font-size: 36px;
       font-family: monospace;
       letter-spacing: 4px;
       color: #f39c12;
@@ -144,22 +174,80 @@
       border: 2px solid #f39c12;
       border-radius: 8px;
       padding: 12px 24px;
-      margin: 20px 0;
+      margin: 16px 0;
       display: inline-block;
     }
     .reward-buttons {
-      display: flex; gap: 16px;
+      display: flex; gap: 14px;
       justify-content: center;
-      margin-top: 20px;
+      margin-top: 16px;
+      flex-wrap: wrap;
     }
     .reward-btn {
       padding: 12px 28px; font-size: 16px;
       border: none; border-radius: 8px;
       cursor: pointer; font-weight: bold;
+      transition: opacity 0.2s;
     }
+    .reward-btn:hover { opacity: 0.85; }
     .btn-cash { background: #2ecc71; color: #1a1a2e; }
     .btn-gift { background: #e74c3c; color: white; }
+    .btn-none { background: #555; color: #ccc; font-size: 14px; padding: 10px 20px; }
+
+    /* 联系表单 */
+    #contactForm {
+      display: none;
+      margin-top: 24px;
+      text-align: left;
+    }
+    #contactForm label { font-size: 15px; color: #aaa; display: block; margin-bottom: 6px; }
+    #contactForm input {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid #444;
+      background: #0d1b2a;
+      color: white;
+      font-size: 16px;
+      margin-bottom: 14px;
+    }
+    #contactForm input:focus { outline: 2px solid #3498db; }
+    #submitContactBtn {
+      width: 100%;
+      padding: 12px;
+      background: #3498db; color: white;
+      border: none; border-radius: 8px;
+      font-size: 16px; cursor: pointer;
+      font-weight: bold;
+    }
+    #submitContactBtn:hover { background: #2980b9; }
+    .privacy-note {
+      font-size: 13px; color: #666;
+      line-height: 1.6;
+      margin-top: 16px;
+      text-align: left;
+    }
+
+    /* NASA-TLX */
+    .tlx-item {
+      margin-bottom: 22px;
+      background: #0d1b2a;
+      padding: 14px 18px;
+      border-radius: 8px;
+    }
+    .tlx-item label { font-size: 15px; display: block; margin-bottom: 8px; color: #ccc; }
+    .tlx-desc { font-size: 12px; color: #666; margin-bottom: 8px; display: block; }
+    .slider-row {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .slider-row input[type=range] {
+      flex: 1; accent-color: #3498db;
+    }
+    .slider-row span { font-size: 12px; color: #888; min-width: 20px; }
+    .slider-val { font-size: 13px; color: #f39c12; text-align: right; margin-top: 4px; }
+
     .fixation { font-size: 60px; margin-top: 80px; color: #555; }
+    hr.section { border-color: #2a2a4a; margin: 18px 0; }
   </style>
 </head>
 <body>
@@ -182,6 +270,13 @@
   <b>F</b> 不匹配 &nbsp;|&nbsp; <b>J</b> 匹配 &nbsp;|&nbsp; <b>Esc</b> 暂停
 </div>
 
+<!-- 能量环图例 -->
+<div id="ringLegend">
+  <span class="ring-dot" style="background:#2ecc71"></span>绿色：状态良好<br>
+  <span class="ring-dot" style="background:#f39c12"></span>黄色：状态一般<br>
+  <span class="ring-dot" style="background:#e74c3c"></span>红色：状态下降
+</div>
+
 <!-- 暂停遮罩 -->
 <div id="pauseOverlay">
   <h2>⏸ 实验已暂停</h2>
@@ -194,22 +289,50 @@
 <!-- 完成页 -->
 <div id="completionScreen">
   <div class="completion-box">
-    <h2>🎉 实验完成！</h2>
-    <p>感谢你的参与！请截图保存你的专属码：</p>
+    <h2>🎉 实验已完成！</h2>
+    <p>感谢你认真参与本实验，你的数据已成功记录。</p>
+    <hr class="section">
+    <p>如需领取参与奖励，请保存你的<strong>专属码</strong>：</p>
     <div class="code-display" id="codeDisplay">----</div>
-    <p style="font-size:14px;color:#888">添加微信时请出示此码以兑换奖励</p>
-    <p style="margin-top:24px;font-size:17px">请选择你的奖励：</p>
+    <p style="font-size:13px;color:#666">添加微信时请出示此截图以核销奖励</p>
+    <hr class="section">
+    <p style="font-size:16px">请选择你的奖励（可选）：</p>
     <div class="reward-buttons">
       <button class="reward-btn btn-cash" onclick="selectReward('cash')">💰 10元红包</button>
       <button class="reward-btn btn-gift" onclick="selectReward('gift')">🎁 纪念品盲盒</button>
+      <button class="reward-btn btn-none" onclick="selectReward('none')">不需要奖励</button>
     </div>
-    <p id="rewardConfirm" style="margin-top:16px;color:#2ecc71;display:none;font-size:15px"></p>
+    <p id="rewardConfirm" style="margin-top:14px;color:#2ecc71;display:none;font-size:15px"></p>
+
+    <!-- 联系方式表单（选奖励后展开） -->
+    <div id="contactForm">
+      <hr class="section">
+      <p style="font-size:16px;margin-bottom:14px">请填写领奖联系方式：</p>
+      <label>微信号 或 手机号</label>
+      <input type="text" id="contactInput" placeholder="请输入微信号或手机号" />
+      <button id="submitContactBtn" onclick="submitContact()">提交领奖信息</button>
+      <p id="contactConfirm" style="color:#2ecc71;display:none;margin-top:10px;font-size:14px"></p>
+      <div class="privacy-note">
+        🔒 我们承诺：联系方式仅用于发放奖励，不会用于其他用途或公开。<br>
+        本实验遵循匿名原则，您的行为数据与个人身份信息不会关联。
+      </div>
+    </div>
+
+    <p style="font-size:13px;color:#555;margin-top:24px">
+      如不需要奖励，可直接关闭此页面。
+    </p>
   </div>
 </div>
 
 <script>
 // ============================================================
-// 全局状态
+// 0. 随机分配 D1/D2 真伪反馈（页面加载时决定）
+// ============================================================
+const D1_IS_TRUE = Math.random() < 0.5;
+const D2_IS_TRUE = !D1_IS_TRUE;
+
+// ============================================================
+// 1. 全局状态
 // ============================================================
 const state = {
   cameraReady: false,
@@ -232,7 +355,11 @@ const state = {
 
   // 能量
   energyLevel: 50,
+  fakeEnergy: 50,
   currentBlock: 'none',
+
+  // 基线（漂移窗口后计算）
+  baseline: null,
 
   // 暂停
   paused: false,
@@ -245,7 +372,7 @@ const state = {
 };
 
 // ============================================================
-// 工具
+// 2. 工具函数
 // ============================================================
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
@@ -256,7 +383,16 @@ function generateCode() {
   return `NB-${n}-${l}`;
 }
 
-// EAR（眼纵横比）
+function arrMean(arr) {
+  if (!arr.length) return 0;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+function arrStd(arr) {
+  if (arr.length < 2) return 1;
+  const m = arrMean(arr);
+  return Math.sqrt(arr.map(x => (x - m) ** 2).reduce((a, b) => a + b, 0) / arr.length);
+}
+
 function calcEAR(pts) {
   const A = Math.hypot(pts[1].x - pts[5].x, pts[1].y - pts[5].y);
   const B = Math.hypot(pts[2].x - pts[4].x, pts[2].y - pts[4].y);
@@ -265,7 +401,7 @@ function calcEAR(pts) {
 }
 
 // ============================================================
-// 摄像头初始化
+// 3. 摄像头初始化
 // ============================================================
 async function initCamera() {
   const video = document.getElementById('camVideo');
@@ -288,7 +424,7 @@ async function initCamera() {
 }
 
 // ============================================================
-// 面部检测循环
+// 4. 面部检测循环
 // ============================================================
 function startDetectionLoop() {
   async function detect() {
@@ -304,11 +440,10 @@ function startDetectionLoop() {
       if (det) {
         const lm = det.landmarks.positions;
 
-        // ── 眨眼 ──
+        // 眨眼 EAR
         const leftEye  = [lm[36],lm[37],lm[38],lm[39],lm[40],lm[41]];
         const rightEye = [lm[42],lm[43],lm[44],lm[45],lm[46],lm[47]];
         const ear = (calcEAR(leftEye) + calcEAR(rightEye)) / 2;
-
         if (ear < state.EAR_THRESHOLD) {
           state.earBelowCount++;
         } else {
@@ -321,8 +456,8 @@ function startDetectionLoop() {
         state.blinkTimestamps = state.blinkTimestamps.filter(t => now - t < 60000);
         state.blinkRate = state.blinkTimestamps.length;
 
-        // ── 头部姿态 ──
-        const nose  = lm[30];
+        // 头部姿态
+        const nose = lm[30];
         const lOuter = lm[36], rOuter = lm[45];
         const cx = (lOuter.x + rOuter.x) / 2;
         const cy = (lOuter.y + rOuter.y) / 2;
@@ -340,30 +475,84 @@ function startDetectionLoop() {
 }
 
 // ============================================================
-// 能量计算与更新
+// 5. 基线计算（漂移窗口结束后调用）
 // ============================================================
+function computeBaseline() {
+  const driftTrials = jsPsych.data.get()
+    .filter({ phase: '漂移窗口' })
+    .values()
+    .filter(d => d.blink_rate !== undefined && d.trial_type_custom !== 'fixation');
+
+  if (driftTrials.length < 5) {
+    // 数据不足时使用安全默认值
+    state.baseline = {
+      blinkMean: 15, blinkStd: 3,
+      headMean: 0.1, headStd: 0.05,
+      rtCVMean: 0.25, rtCVStd: 0.08,
+    };
+    console.warn('基线数据不足，使用默认值');
+    return;
+  }
+
+  const blinkArr = driftTrials.map(d => d.blink_rate);
+  const headArr  = driftTrials.map(d => Math.abs(d.head_yaw) + Math.abs(d.head_pitch));
+  const rtArr    = driftTrials.filter(d => d.rt_cv > 0).map(d => d.rt_cv);
+
+  state.baseline = {
+    blinkMean: arrMean(blinkArr),
+    blinkStd:  Math.max(arrStd(blinkArr), 0.5),
+    headMean:  arrMean(headArr),
+    headStd:   Math.max(arrStd(headArr), 0.01),
+    rtCVMean:  rtArr.length ? arrMean(rtArr) : 0.25,
+    rtCVStd:   rtArr.length ? Math.max(arrStd(rtArr), 0.01) : 0.08,
+  };
+  console.log('基线计算完成:', state.baseline);
+}
+
+// ============================================================
+// 6. 能量计算
+// ============================================================
+function computeZScoreEnergy(useBlink, useHead, useRT) {
+  if (!state.baseline) return 50;
+  const b = state.baseline;
+
+  let zSum = 0, count = 0;
+
+  if (useBlink) {
+    const z = (state.blinkRate - b.blinkMean) / b.blinkStd;
+    zSum += z; count++;
+  }
+  if (useHead) {
+    const headInst = Math.abs(state.headYaw) + Math.abs(state.headPitch);
+    const z = (headInst - b.headMean) / b.headStd;
+    zSum += z; count++;
+  }
+  if (useRT && state.rtHistory.length >= 5) {
+    const z = (state.rtCV - b.rtCVMean) / b.rtCVStd;
+    zSum += z; count++;
+  }
+
+  if (count === 0) return 50;
+  const zAvg = zSum / count;
+  // z=0 → energy=50, z=-2(更好) → ~90, z=+2(更差) → ~10
+  return clamp(50 - zAvg * 20, 0, 100);
+}
+
+function computeFakeEnergy() {
+  // 有机随机游走，范围20-80，看起来真实
+  state.fakeEnergy += (Math.random() - 0.48) * 4;
+  state.fakeEnergy = clamp(state.fakeEnergy, 20, 80);
+  return state.fakeEnergy;
+}
+
 function computeEnergy() {
   const b = state.currentBlock;
-  if (b === 'Block_A') {
-    // 眨眼率：10次/min → 100分，25+次/min → 0分
-    return clamp(100 - (state.blinkRate - 10) / 15 * 100, 0, 100);
-  }
-  if (b === 'Block_B') {
-    // 头部稳定性：完全静止→100，|yaw|+|pitch|≥1→0
-    const instability = Math.abs(state.headYaw) + Math.abs(state.headPitch);
-    return clamp(100 - instability / 1.0 * 100, 0, 100);
-  }
-  if (b === 'Block_C') {
-    // RT变异系数：CV=0.1→100，CV≥0.5→0
-    return clamp(100 - (state.rtCV - 0.1) / 0.4 * 100, 0, 100);
-  }
-  if (b === 'Block_D1' || b === 'Block_D2') {
-    const eBlink = clamp(100 - (state.blinkRate - 10) / 15 * 100, 0, 100);
-    const eHead  = clamp(100 - (Math.abs(state.headYaw) + Math.abs(state.headPitch)) * 100, 0, 100);
-    const eRT    = clamp(100 - (state.rtCV - 0.1) / 0.4 * 100, 0, 100);
-    return (eBlink + eHead + eRT) / 3;
-  }
-  return 50; // 其他阶段显示中性
+  if (b === 'Block_A')  return computeZScoreEnergy(true,  false, false);
+  if (b === 'Block_B')  return computeZScoreEnergy(false, true,  false);
+  if (b === 'Block_C')  return computeZScoreEnergy(false, false, true);
+  if (b === 'Block_D1') return D1_IS_TRUE ? computeZScoreEnergy(true, true, true) : computeFakeEnergy();
+  if (b === 'Block_D2') return D2_IS_TRUE ? computeZScoreEnergy(true, true, true) : computeFakeEnergy();
+  return 50;
 }
 
 function updateEnergy() {
@@ -376,23 +565,20 @@ function updateEnergy() {
 }
 
 // ============================================================
-// 键盘节律（RT滚动窗口）
+// 7. 键盘节律更新
 // ============================================================
 function updateRTHistory(rt) {
-  if (rt == null) return;
+  if (rt == null || rt <= 0) return;
   state.rtHistory.push(rt);
   if (state.rtHistory.length > 20) state.rtHistory.shift();
   if (state.rtHistory.length >= 5) {
-    const mean = state.rtHistory.reduce((a,b)=>a+b,0) / state.rtHistory.length;
-    const std  = Math.sqrt(
-      state.rtHistory.map(x=>(x-mean)**2).reduce((a,b)=>a+b,0) / state.rtHistory.length
-    );
-    state.rtCV = mean > 0 ? std / mean : 0;
+    const m = arrMean(state.rtHistory);
+    state.rtCV = m > 0 ? arrStd(state.rtHistory) / m : 0;
   }
 }
 
 // ============================================================
-// 暂停机制
+// 8. 暂停机制
 // ============================================================
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !state.paused) {
@@ -400,8 +586,10 @@ document.addEventListener('keydown', e => {
     state.pauseStart = Date.now();
     document.getElementById('pauseOverlay').classList.add('visible');
     document.getElementById('keyHint').style.display = 'none';
+    document.getElementById('ringLegend').style.display = 'none';
   }
   if (e.key === ' ' && state.paused) {
+    e.preventDefault();
     state.paused = false;
     if (state.pauseStart) {
       state.pauseLog.push({ start: state.pauseStart, end: Date.now() });
@@ -409,27 +597,48 @@ document.addEventListener('keydown', e => {
     }
     document.getElementById('pauseOverlay').classList.remove('visible');
     document.getElementById('keyHint').style.display = 'block';
+    document.getElementById('ringLegend').style.display = 'block';
   }
 });
 
 // ============================================================
-// 奖励选择
+// 9. 完成页：奖励选择 + 联系方式
 // ============================================================
 function selectReward(type) {
   state.rewardChoice = type;
-  const label = type === 'cash' ? '10元红包' : '纪念品盲盒';
-  const el = document.getElementById('rewardConfirm');
-  el.style.display = 'block';
-  el.textContent = `✓ 已选择：${label}。请截图后添加微信兑换。`;
-  try {
-    jsPsych.data.addProperties({ reward_choice: type });
-  } catch(e) {}
+  const labels = { cash: '10元红包', gift: '纪念品盲盒', none: '无需奖励' };
+  const msg = document.getElementById('rewardConfirm');
+  msg.style.display = 'block';
+
+  if (type === 'none') {
+    msg.textContent = '✓ 已记录。感谢你的参与，可直接关闭此页面。';
+    document.getElementById('contactForm').style.display = 'none';
+  } else {
+    msg.textContent = `✓ 已选择：${labels[type]}。请填写联系方式以便发放。`;
+    document.getElementById('contactForm').style.display = 'block';
+  }
+  try { jsPsych.data.addProperties({ reward_choice: type }); } catch(e) {}
+}
+
+function submitContact() {
+  const contact = document.getElementById('contactInput').value.trim();
+  if (!contact) {
+    alert('请输入微信号或手机号');
+    return;
+  }
+  // Step 9 会在这里加入 EmailJS 发送
+  // 联系方式单独放在邮件正文，不写入行为数据CSV
+  console.log('联系方式:', contact, '| 奖励:', state.rewardChoice, '| 专属码:', state.completionCode);
+  document.getElementById('submitContactBtn').disabled = true;
+  document.getElementById('contactConfirm').style.display = 'block';
+  document.getElementById('contactConfirm').textContent =
+    '✅ 已提交！我们将在24小时内通过微信联系你。';
 }
 
 // ============================================================
-// 序列生成
+// 10. 序列生成
 // ============================================================
-const LETTERS = ['B','C','D','F','G','H','J','K'];
+const LETTERS       = ['B','C','D','F','G','H','J','K'];
 const STIM_DURATION  = 500;
 const TRIAL_DURATION = 2000;
 const TARGET_RATE    = 0.33;
@@ -470,7 +679,7 @@ const sequences = {
 };
 
 // ============================================================
-// N-back block 构建
+// 11. N-back Block 构建
 // ============================================================
 function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
   const { sequence, isTarget } = seqObj;
@@ -486,11 +695,12 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
       on_start: function() {
         state.currentBlock = blockName;
         document.getElementById('keyHint').style.display = 'block';
+        document.getElementById('ringLegend').style.display = 'block';
       },
       data: { phase: blockName, trial_type_custom: 'fixation' }
     });
 
-    // 字母刺激
+    // 字母刺激（response_ends_trial: false → 严格按时长走）
     trials.push({
       type: jsPsychHtmlKeyboardResponse,
       stimulus: function() {
@@ -500,9 +710,10 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
           <div id="energyRing"></div>
         `;
       },
-      choices: ['f','j'],
+      choices: ['f', 'j'],
       trial_duration: TRIAL_DURATION,
       stimulus_duration: STIM_DURATION,
+      response_ends_trial: false,          // ← 核心修复：按键不跳过trial
       on_finish: function(data) {
         const responded = data.response !== null;
         const correct =
@@ -520,14 +731,16 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
         data.head_pitch        = +state.headPitch.toFixed(3);
         data.rt_cv             = +state.rtCV.toFixed(3);
         data.energy            = +state.energyLevel.toFixed(1);
-        data.was_paused        = state.pauseLog.length > 0 &&
-          state.pauseLog.some(p => data.time_elapsed >= p.start && data.time_elapsed <= p.end);
+        data.trial_type_custom = 'stimulus';
+        // 记录该trial所属条件（用于分析时区分真伪反馈）
+        if (blockName === 'Block_D1') data.feedback_type = D1_IS_TRUE ? 'true' : 'fake';
+        if (blockName === 'Block_D2') data.feedback_type = D2_IS_TRUE ? 'true' : 'fake';
 
         if (responded) updateRTHistory(data.rt);
       }
     });
 
-    // 热身反馈
+    // 热身阶段即时反馈
     if (showFeedback) {
       trials.push({
         type: jsPsychHtmlKeyboardResponse,
@@ -547,39 +760,113 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
 }
 
 // ============================================================
-// 指导语 / 休息
+// 12. 辅助：指导语 / 倒计时休息 / 基线触发
 // ============================================================
 function makeInstruction(html) {
   return {
     type: jsPsychHtmlKeyboardResponse,
     stimulus: `<div class="instruction-box">${html}
-      <br><p style="text-align:center;font-size:15px;color:#555">按 空格键 继续</p></div>`,
+      <p style="text-align:center;font-size:15px;color:#555;margin-top:18px">按 空格键 继续</p></div>`,
     choices: [' '],
     on_start: function() {
       document.getElementById('keyHint').style.display = 'none';
+      document.getElementById('ringLegend').style.display = 'none';
     }
   };
 }
 
-function makeRest(label) {
+// 能量环图例说明（嵌入指导语底部的统一片段）
+const RING_LEGEND_HTML = `
+  <div style="background:#0d1b2a;padding:10px 14px;border-radius:8px;font-size:14px;margin-top:12px">
+    能量环颜色含义：
+    <span style="color:#2ecc71">●</span> 绿色=状态良好 &nbsp;
+    <span style="color:#f39c12">●</span> 黄色=状态一般 &nbsp;
+    <span style="color:#e74c3c">●</span> 红色=状态下降
+  </div>`;
+
+function makeCountdownRest(seconds, label) {
   return {
     type: jsPsychHtmlKeyboardResponse,
     stimulus: `
       <div class="instruction-box" style="text-align:center">
         <h2>🕐 ${label}</h2>
         <p>请<strong>闭眼休息</strong>，放松面部和颈部肌肉。</p>
-        <p style="color:#888">准备好后按 空格键 继续</p>
+        <div id="countdownDisplay" style="font-size:64px;color:#f39c12;margin:20px 0">${seconds}</div>
+        <p style="color:#666;font-size:14px">倒计时结束后自动继续 &nbsp;|&nbsp; 或按 <b>空格键</b> 提前继续</p>
       </div>`,
     choices: [' '],
+    trial_duration: seconds * 1000,
     on_start: function() {
       state.currentBlock = 'rest';
       document.getElementById('keyHint').style.display = 'none';
+      document.getElementById('ringLegend').style.display = 'none';
+      let remaining = seconds;
+      const iv = setInterval(() => {
+        remaining--;
+        const el = document.getElementById('countdownDisplay');
+        if (el) el.textContent = Math.max(remaining, 0);
+        if (remaining <= 0) clearInterval(iv);
+      }, 1000);
+    }
+  };
+}
+
+// 基线计算触发trial（无感知，自动跳过）
+const baselineTriggerTrial = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: '<div style="margin-top:200px;color:#333;font-size:16px">正在校准个体基线...</div>',
+  choices: 'NO_KEYS',
+  trial_duration: 800,
+  on_start: function() { computeBaseline(); }
+};
+
+// ============================================================
+// 13. NASA-TLX 问卷
+// ============================================================
+function makeNASATLX() {
+  const dims = [
+    { name: 'mental_demand',   label: '脑力需求',  desc: '任务需要多少思考、判断和记忆？' },
+    { name: 'physical_demand', label: '体力需求',  desc: '任务需要多少身体活动（如眼手协调）？' },
+    { name: 'temporal_demand', label: '时间压力',  desc: '任务节奏有多紧迫、时间是否充裕？' },
+    { name: 'performance',     label: '完成效果',  desc: '你对自己的表现有多满意？（左=非常满意）' },
+    { name: 'effort',          label: '努力程度',  desc: '你为完成任务付出了多少努力？' },
+    { name: 'frustration',     label: '挫败感',    desc: '你感到多沮丧、烦躁或压力？' },
+  ];
+
+  const slidersHtml = dims.map(d => `
+    <div class="tlx-item">
+      <label>${d.label}</label>
+      <span class="tlx-desc">${d.desc}</span>
+      <div class="slider-row">
+        <span>低</span>
+        <input type="range" name="${d.name}" min="0" max="100" value="50"
+          oninput="document.getElementById('val_${d.name}').textContent=this.value">
+        <span>高</span>
+      </div>
+      <div class="slider-val" id="val_${d.name}">50</div>
+    </div>
+  `).join('');
+
+  return {
+    type: jsPsychSurveyHtmlForm,
+    preamble: `
+      <div style="max-width:600px;margin:0 auto">
+        <h2 style="text-align:center">主观负荷评估（NASA-TLX）</h2>
+        <p style="text-align:center;color:#888;font-size:15px">
+          请根据刚才整体的实验体验，拖动滑块评分（约1分钟）
+        </p>
+      </div>`,
+    html: `<div style="max-width:600px;margin:0 auto">${slidersHtml}</div>`,
+    button_label: '提交问卷',
+    on_start: function() {
+      document.getElementById('keyHint').style.display = 'none';
+      document.getElementById('ringLegend').style.display = 'none';
     }
   };
 }
 
 // ============================================================
-// 组装 Timeline
+// 14. 组装完整 Timeline
 // ============================================================
 let jsPsych;
 
@@ -590,42 +877,47 @@ function buildTimeline() {
   tl.push(makeInstruction(`
     <h2>欢迎参加本实验</h2>
     <p>本实验共约 <strong>17.5 分钟</strong>，请在安静、光线充足的环境中完成。</p>
-    <p>实验要求你 <strong>全程保持专注</strong>，请提前关闭无关应用，避免打扰。</p>
-    <hr style="border-color:#333;margin:18px 0">
-    <p><strong>任务说明：</strong>屏幕中央会依次出现一系列字母，你需要判断当前字母是否与<strong>若干个之前</strong>的字母相同。</p>
-    <p style="background:#0d1b2a;padding:14px;border-radius:8px;text-align:center">
-      🟦 相同（目标）→ 按 <strong>J</strong> 键<br>
-      🟥 不同（非目标）→ 按 <strong>F</strong> 键
-    </p>
-    <p>具体规则（间隔几个字母）将在每个阶段开始前说明。</p>
-    <p style="font-size:14px;color:#666">
+    <p>⚠ 实验要求<strong>全程保持专注</strong>，请提前关闭无关应用，避免打扰。</p>
+    <hr class="section">
+    <p><strong>任务说明：</strong>屏幕中央会依次出现一系列字母，你需要判断：
+    <strong>当前字母是否与若干个之前的字母相同？</strong></p>
+    <div class="highlight-box">
+      🟦 相同（目标）→ 按 <strong>J</strong> 键（右手食指）<br>
+      🟥 不同（非目标）→ 按 <strong>F</strong> 键（左手食指）<br>
+      <span style="font-size:14px;color:#666">每个字母最多作答一次，无需抢按</span>
+    </div>
+    <p>屏幕右侧会出现一个<strong>彩色圆环</strong>，实时反映你的专注状态，仅供参考，不影响计分。</p>
+    ${RING_LEGEND_HTML}
+    <p style="font-size:14px;color:#666;margin-top:14px">
       ⚠ 如遇紧急情况（如需短暂离座），可按 <b>Esc</b> 暂停。
-      非必要请勿使用，暂停会影响数据质量。
+      非必要请勿使用，频繁暂停会影响数据质量。
     </p>
   `));
 
   // ── 热身：1-back ──
   tl.push(makeInstruction(`
     <h2>🔥 热身阶段（约1分钟）</h2>
-    <p>热身使用 <strong>1-back</strong> 规则：</p>
-    <p style="text-align:center;background:#0d1b2a;padding:12px;border-radius:8px">
+    <p>热身使用 <strong>1-back</strong> 规则（比正式实验更简单）：</p>
+    <div class="highlight-box">
       判断当前字母是否与<strong>紧邻的上一个</strong>字母相同
-    </p>
-    <p>示例：B → <span style="color:#f39c12;font-weight:bold">B</span>（相同，按 J）&emsp;B → C（不同，按 F）</p>
-    <p>本阶段有 <strong>即时正误反馈</strong>，帮助你熟悉操作节奏。</p>
-    <p style="color:#888;font-size:15px">⚠ 热身数据不计入正式分析。</p>
+    </div>
+    <p>示例：B → <span style="color:#f39c12;font-weight:bold">B</span>（相同，按 <b>J</b>）&emsp;
+            B → C（不同，按 <b>F</b>）</p>
+    <p>本阶段有<strong>即时正误反馈</strong>，帮助你熟悉节奏。</p>
+    <p style="color:#888;font-size:14px">⚠ 热身数据不计入正式分析。</p>
   `));
   tl.push(...createNBackBlock(sequences.warmup, '热身(1-back)', true, 1));
 
-  // ── 高负荷：切换到2-back ──
+  // ── 切换到2-back ──
   tl.push(makeInstruction(`
     <h2>⚡ 正式开始：切换到 2-back</h2>
-    <p>从现在起使用 <strong>2-back</strong> 规则：</p>
-    <p style="text-align:center;background:#0d1b2a;padding:12px;border-radius:8px">
+    <p>从现在起难度提升，使用 <strong>2-back</strong> 规则：</p>
+    <div class="highlight-box">
       判断当前字母是否与 <strong>2个之前</strong> 的字母相同
-    </p>
-    <p>示例：B → C → <span style="color:#f39c12;font-weight:bold">B</span>（与2个前的B相同，按 J）</p>
-    <p>此阶段 <strong>无反馈</strong>，请尽力作答。</p>
+    </div>
+    <p>示例：B → C → <span style="color:#f39c12;font-weight:bold">B</span>（与2个前的B相同，按 <b>J</b>）<br>
+    &emsp;&emsp;&emsp; B → C → D（不同，按 <b>F</b>）</p>
+    <p>此阶段 <strong>无反馈</strong>，请尽力作答。后续所有阶段均使用此规则。</p>
   `));
   tl.push(...createNBackBlock(sequences.highload, '高负荷', false, 2));
 
@@ -633,15 +925,19 @@ function buildTimeline() {
   tl.push(makeInstruction(`
     <h2>📊 状态基准采集（约2分钟）</h2>
     <p>继续 2-back 任务，保持自然节奏。</p>
-    <p>系统将在此阶段记录你的状态基准，用于后续个体化校准。</p>
+    <p>系统将在此阶段建立你的<strong>个体状态基准</strong>，用于后续能量环的个性化校准。</p>
   `));
   tl.push(...createNBackBlock(sequences.drift, '漂移窗口', false, 2));
+
+  // 漂移窗口结束后计算基线（无感知）
+  tl.push(baselineTriggerTrial);
 
   // ── Block A ──
   tl.push(makeInstruction(`
     <h2>Block A（约1.5分钟）</h2>
     <p>继续 2-back 任务。</p>
     <p>能量环将根据你的 <strong>眨眼频率</strong> 实时变化。</p>
+    ${RING_LEGEND_HTML}
   `));
   tl.push(...createNBackBlock(sequences.blockA, 'Block_A', false, 2));
 
@@ -650,6 +946,7 @@ function buildTimeline() {
     <h2>Block B（约1分钟）</h2>
     <p>继续 2-back 任务。</p>
     <p>能量环将根据你的 <strong>头部姿态稳定性</strong> 实时变化。</p>
+    ${RING_LEGEND_HTML}
   `));
   tl.push(...createNBackBlock(sequences.blockB, 'Block_B', false, 2));
 
@@ -658,6 +955,7 @@ function buildTimeline() {
     <h2>Block C（约2分钟）</h2>
     <p>继续 2-back 任务。</p>
     <p>能量环将根据你的 <strong>按键节律稳定性</strong> 实时变化。</p>
+    ${RING_LEGEND_HTML}
   `));
   tl.push(...createNBackBlock(sequences.blockC, 'Block_C', false, 2));
 
@@ -666,33 +964,35 @@ function buildTimeline() {
     <h2>Block D-1（约3分钟）</h2>
     <p>继续 2-back 任务。</p>
     <p>能量环现在综合 <strong>眨眼 + 头部 + 按键</strong> 三种信号实时变化。</p>
+    ${RING_LEGEND_HTML}
   `));
   tl.push(...createNBackBlock(sequences.blockD1, 'Block_D1', false, 2));
 
-  // ── 清洗期 ──
-  tl.push(makeRest('清洗期休息（约1分钟）'));
+  // ── 清洗期倒计时 ──
+  tl.push(makeCountdownRest(60, '清洗期休息（1分钟）'));
 
   // ── Block D-2 ──
   tl.push(makeInstruction(`
     <h2>Block D-2（约3分钟）</h2>
-    <p>最后一段 2-back 任务，三信号融合对照条件。</p>
-    <p>请保持与之前相同的认真态度完成。</p>
+    <p>最后一段 2-back 任务，请保持与之前相同的认真态度。</p>
+    <p>能量环继续综合三种信号实时变化。</p>
+    ${RING_LEGEND_HTML}
   `));
   tl.push(...createNBackBlock(sequences.blockD2, 'Block_D2', false, 2));
 
-  // ── 结束占位（Step 10 替换为 NASA-TLX）──
+  // ── NASA-TLX 问卷 ──
   tl.push(makeInstruction(`
     <h2>任务部分完成！🙏</h2>
-    <p>感谢你的坚持。</p>
-    <p>接下来是一份简短的主观评估问卷（约1分钟），完成后即可领取奖励。</p>
-    <p style="color:#888;font-size:15px">（问卷将在下一步加入）</p>
+    <p>感谢你的坚持。接下来是一份关于刚才体验的<strong>简短主观评估</strong>，约1分钟。</p>
+    <p>请根据你在整个实验中的总体感受来作答，没有对错之分。</p>
   `));
+  tl.push(makeNASATLX());
 
   return tl;
 }
 
 // ============================================================
-// 实验启动
+// 15. 实验启动
 // ============================================================
 async function startExperiment() {
   document.getElementById('startBtn').disabled = true;
@@ -701,19 +1001,22 @@ async function startExperiment() {
   jsPsych = initJsPsych({
     display_element: 'jspsych-target',
     on_finish: function() {
-      state.completionCode = generateCode();
+      // 记录真伪分配结果（研究者可在数据里看到）
       jsPsych.data.addProperties({
-        completion_code: state.completionCode,
+        D1_feedback: D1_IS_TRUE ? 'true' : 'fake',
+        D2_feedback: D2_IS_TRUE ? 'true' : 'fake',
         pause_count: state.pauseLog.length,
-        total_pause_ms: state.pauseLog.reduce((s,p)=>s+(p.end-p.start),0),
+        total_pause_ms: state.pauseLog.reduce((s,p) => s + (p.end - p.start), 0),
       });
 
+      state.completionCode = generateCode();
       document.getElementById('codeDisplay').textContent = state.completionCode;
       document.getElementById('completionScreen').classList.add('visible');
       document.getElementById('keyHint').style.display = 'none';
+      document.getElementById('ringLegend').style.display = 'none';
 
-      // Step 9 在此处添加 EmailJS
-      console.log('完成！数据条数:', jsPsych.data.get().count());
+      // Step 9: 在此处加入 EmailJS 发送逻辑
+      console.log('实验完成！数据条数:', jsPsych.data.get().count());
     }
   });
 
@@ -721,20 +1024,20 @@ async function startExperiment() {
 }
 
 // ============================================================
-// 页面加载：先加载模型，再显示开始按钮
+// 16. 页面加载：先加载模型再显示开始按钮
 // ============================================================
 window.addEventListener('load', async () => {
   const status = document.getElementById('loadingStatus');
   try {
     status.textContent = '正在加载人脸检测模型 (1/2)...';
     await faceapi.nets.tinyFaceDetector.loadFromUri('./models');
-    status.textContent = '正在加载人脸关键点模型 (2/2)...';
+    status.textContent = '正在加载关键点模型 (2/2)...';
     await faceapi.nets.faceLandmark68Net.loadFromUri('./models');
     status.textContent = '正在申请摄像头权限...';
     await initCamera();
     status.textContent = '✅ 准备就绪';
   } catch(e) {
-    console.error('初始化失败:', e);
+    console.error('初始化错误:', e);
     status.textContent = '⚠ 摄像头不可用，实验仍可继续（无生理指标）';
   }
   document.getElementById('startBtn').style.display = 'inline-block';
