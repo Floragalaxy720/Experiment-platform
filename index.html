@@ -1,18 +1,42 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>My Experiment</title>
+  <title>N-back Experiment</title>
+
+  <!-- jsPsych 核心 -->
+  <script src="https://unpkg.com/jspsych@7.3.0"></script>
+  <link href="https://unpkg.com/jspsych@7.3.0/css/jspsych.css" rel="stylesheet" />
+
+  <!-- 插件 -->
+  <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.2"></script>
 </head>
-<body>
-  <h1>Welcome to My Experiment</h1>
-  <p>Press start to begin.</p>
 
-  <button onclick="startExperiment()">Start</button>
+<body></body>
 
-  <script>
-    function startExperiment() {
-      alert("Experiment starting...");
+<script>
+  // 初始化
+  const jsPsych = initJsPsych({
+    on_finish: function () {
+      jsPsych.data.displayData(); // 显示数据（后面会改成发邮件）
     }
-  </script>
-</body>
+  });
+
+  // N-back刺激（先用简化版）
+  const stimuli = ["A", "B", "A", "C", "A", "B", "A"];
+
+  let timeline = [];
+
+  stimuli.forEach(letter => {
+    timeline.push({
+      type: jsPsychHtmlKeyboardResponse,
+      stimulus: `<h1>${letter}</h1>`,
+      choices: ["f", "j"],
+      prompt: "<p>F = match, J = no match</p>",
+      trial_duration: 1500
+    });
+  });
+
+  // 启动实验
+  jsPsych.run(timeline);
+</script>
 </html>
