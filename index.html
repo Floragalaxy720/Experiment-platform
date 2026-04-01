@@ -1,8 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>N-back Experiment</title>
+
+  <!-- jsPsych 核心 -->
+  <script src="https://unpkg.com/jspsych@7.3.0/dist/jspsych.js"></script>
+  <link href="https://unpkg.com/jspsych@7.3.0/dist/css/jspsych.css" rel="stylesheet" />
+
+  <!-- 插件（⚠️这里是关键） -->
+  <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.2/dist/index.browser.js"></script>
+</head>
+
+<body></body>
+
 <script>
   const jsPsych = initJsPsych({
     on_finish: function () {
-      const data = jsPsych.data.get().csv();
-      console.log(data);
       jsPsych.data.displayData();
     }
   });
@@ -22,8 +36,8 @@
       type: jsPsychHtmlKeyboardResponse,
       stimulus: `<h1>${current}</h1>`,
       choices: ["f", "j"],
-      prompt: "<p>F = match (2-back), J = no match</p>",
       trial_duration: 1500,
+      prompt: "<p>F = match, J = no match</p>",
 
       data: {
         stimulus: current,
@@ -31,16 +45,13 @@
       },
 
       on_finish: function (data) {
-        if (data.response === "f" && data.match === true) {
-          data.correct = 1;
-        } else if (data.response === "j" && data.match === false) {
-          data.correct = 1;
-        } else {
-          data.correct = 0;
-        }
+        data.correct =
+          (data.response === "f" && data.match) ||
+          (data.response === "j" && !data.match) ? 1 : 0;
       }
     });
   }
 
   jsPsych.run(timeline);
 </script>
+</html>
