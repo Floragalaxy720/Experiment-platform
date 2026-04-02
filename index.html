@@ -8,6 +8,8 @@
   <script src="plugin-html-keyboard-response.js"></script>
   <script src="https://unpkg.com/@jspsych/plugin-survey-html-form@1.0.3/dist/index.browser.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -358,8 +360,44 @@ const state = {
   fakeEnergy: 50,
   currentBlock: 'none',
 
-  // 基线（漂移窗口后计算）
+  // 基线统计（漂移窗口后由 computeBaseline() 填充）
   baseline: null,
+
+  // OLS 回归结果：自然漂移斜率 β 和截距 Ŝ_baseline（computeBaseline() 填充）
+  // 论文说明：β 单位为「信号变化量/秒」，截距为漂移窗口回归直线在 t=0 的估计值
+  driftBeta:      { blink: 0, head: 0, rtCV: 0 },   // 自然漂移斜率
+  driftIntercept: { blink: 15, head: 0.1, rtCV: 0.25 }, // 截距 Ŝ_baseline
+  driftEndTime:   null,   // computeBaseline() 调用时刻（漂移修正 t=0 基准）
+
+  // 信号方向系数（computeDirectionCoeff() 在 A/B/C 各自结束后填充）
+  // +1 = 信号高→认知状态好，-1 = 信号高→状态差；默认 -1（保守假设）
+  directionBlink: -1,
+  directionHead:  -1,
+  directionRT:    -1,
+  directionLog:   [],   // [{ block, signal, r }]，供 buildEmailBody 读取
+
+  // ── 自然回归系数 β（漂移窗口 WLS 估计，无反馈条件）
+  // 论文说明：β 在模型 S_{t+1}=S_t-β·ΔS_t 中量化系统内在调节强度，
+  //   由漂移窗口相邻 trial 间的 z 分变化与偏差的比值 WLS 聚合得到
+  naturalBeta: { blink: 0, head: 0, rtCV: 0 },
+
+  // ── 逐 trial γ̂ 计算所需的前一时刻信号值
+  prevZ: { blink: null, head: null, rtCV: null },
+  prevFusedS: null,
+
+  // ── 逐 trial γ̂ 日志（分信号存储，供 WLS 聚合用）
+  // entries: [{ gammaHat, weight }]，weight = |ΔSₜ|
+  gammaLog: { blink: [], head: [], rtCV: [], d: [] },
+
+  // ── WLS 聚合后的各信号反馈增益 γ̄
+  // 论文说明：γ̄_k = 单信号 k 在 Block A/B/C 中驱动状态回归的平均增益；
+  //   γ̄_D = Block D 真反馈融合信号的综合反馈增益（核心因变量之一）
+  gammaBar: { blink: 0, head: 0, rtCV: 0, d: 0 },
+
+  // ── 归一化权重 w1-w3（正比于 |γ̄_k|，反映各信号反馈贡献）
+  // 论文说明：权重由单信号反馈阶段实测的增益幅度决定，
+  //   反馈驱动效果越强的信号在 Block D 融合时占比越高
+  weights: { blink: 0.333, head: 0.333, rtCV: 0.334 },
 
   // 暂停
   paused: false,
@@ -391,6 +429,114 @@ function arrStd(arr) {
   if (arr.length < 2) return 1;
   const m = arrMean(arr);
   return Math.sqrt(arr.map(x => (x - m) ** 2).reduce((a, b) => a + b, 0) / arr.length);
+}
+
+// 普通最小二乘线性回归
+// xs: 自变量数组（此处为 trial 序号），ys: 因变量数组（信号值）
+// 返回 { beta: 斜率/trial, intercept: y截距 }
+// 论文说明：β 估计漂移窗口内信号的自然线性趋势，
+// 用于在 Block D 中从当前信号中减去预期自然漂移，
+// 从而隔离出反馈干预效应。
+function linearRegression(xs, ys) {
+  const n = xs.length;
+  if (n < 3) return { beta: 0, intercept: arrMean(ys) };
+  const mx = arrMean(xs), my = arrMean(ys);
+  const ssxy = xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0);
+  const ssxx = xs.reduce((s, x)    => s + (x - mx) ** 2, 0);
+  const beta = ssxx > 0 ? ssxy / ssxx : 0;
+  return { beta, intercept: my - beta * mx };
+}
+
+// Pearson 积差相关系数
+// 用于 Block A/B/C 中计算各信号与逐试次正确率的相关方向
+function pearsonR(xs, ys) {
+  const n = xs.length;
+  if (n < 3) return 0;
+  const mx = arrMean(xs), my = arrMean(ys);
+  const num = xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0);
+  const dx  = Math.sqrt(xs.reduce((s, x) => s + (x - mx) ** 2, 0));
+  const dy  = Math.sqrt(ys.reduce((s, y) => s + (y - my) ** 2, 0));
+  return (dx * dy) > 1e-9 ? num / (dx * dy) : 0;
+}
+
+// ── WLS 聚合 γ̂ 数组 → γ̄ ────────────────────────────────────
+// entries: [{gammaHat, weight}]，weight = |ΔSₜ|
+// 论文说明：因 γ̂ 在 ΔSₜ→0 时方差发散（异方差），采用 WLS 以 |ΔSₜ| 为权重，
+//   使状态偏差较大（估计更可靠）的 trial 贡献更多权重。
+//   参考：Carroll & Ruppert (1988) Transformation and Weighting in Regression.
+function computeWLSGamma(entries) {
+  const valid = entries.filter(e => e.weight > 0.05);
+  if (valid.length < 3) return 0;
+  const num = valid.reduce((s, e) => s + e.weight * e.gammaHat, 0);
+  const den = valid.reduce((s, e) => s + e.weight, 0);
+  return den > 1e-9 ? num / den : 0;
+}
+
+// ── 单信号 z 分（β_k=0 假设：信号视为稳定，只做均值归一化）
+// 论文说明：本研究假设三个生理/行为信号在无干预条件下不存在系统性时间漂移
+//   （即 β_k=0），因此信号偏差直接以均值为基线计算 z 分，
+//   不应用时间校正项（intercept + β·t）。
+//   naturalBeta 字段仍会从漂移窗口估计（用于邮件报告和理论参考），
+//   但不纳入信号 γ̂ 的计算公式。
+function getSingleZ(key) {
+  if (!state.baseline) return 0;
+  const b = state.baseline;
+  if (key === 'blink') return (state.blinkRate - b.blinkMean) / b.blinkStd;
+  if (key === 'head') {
+    const h = Math.abs(state.headYaw) + Math.abs(state.headPitch);
+    return (h - b.headMean) / b.headStd;
+  }
+  if (key === 'rtCV') {
+    if (state.rtHistory.length < 5) return 0;
+    return (state.rtCV - b.rtCVMean) / b.rtCVStd;
+  }
+  return 0;
+}
+
+// ── 三信号加权定向融合 Sₜ（Block D 用）──────────────────────
+// Sₜ = Σ wₖ × (−directionK × zₖ)，正值=认知状态好，负值=状态差
+// 论文说明：direction=1 表示"信号↑=状态差"（默认），
+//   此时 -direction × z = -z，当 z>0（信号高→状态差）时 Sₜ<0 正确表示差状态。
+//   direction=-1 表示"信号↑=状态好"（Block A/B/C 验证后翻转），
+//   此时 -direction × z = +z，当 z>0（信号高→状态好）时 Sₜ>0 正确。
+function getFusedS() {
+  if (!state.baseline) return 0;
+  const w = state.weights;
+  const sB = -state.directionBlink * getSingleZ('blink');
+  const sH = -state.directionHead  * getSingleZ('head');
+  const sR = state.rtHistory.length >= 5 ? -state.directionRT * getSingleZ('rtCV') : 0;
+  const wR = state.rtHistory.length >= 5 ? w.rtCV : 0;
+  const wTotal = w.blink + w.head + wR;
+  if (wTotal < 1e-6) return 0;
+  return (w.blink * sB + w.head * sH + wR * sR) / wTotal;
+}
+
+// ── 归一化权重计算 + 方向系数更新（三个 Block 全完成后调用）────
+// 方向：sign(γ̄_k) > 0 → 默认方向（信号↑=状态差）有效，保持 direction=1
+//        sign(γ̄_k) ≤ 0 → 默认方向无效或逆向，翻转为 direction=-1
+// 权重 ∝ |γ̄_k|（贡献越大权重越高），全零时退回等权重
+// 论文说明：权重由单信号闭环反馈的实测增益幅度 |γ̄_k| 决定，
+//   方向由 sign(γ̄_k) 决定而非先验假设，两者均由 Block A/B/C 实测得出。
+function computeAndUpdateWeights() {
+  const gB = state.gammaBar.blink;
+  const gH = state.gammaBar.head;
+  const gR = state.gammaBar.rtCV;
+
+  // 方向系数（direction=1：保持默认，信号↑=状态差；-1：翻转）
+  state.directionBlink = gB > 0 ? 1 : -1;
+  state.directionHead  = gH > 0 ? 1 : -1;
+  state.directionRT    = gR > 0 ? 1 : -1;
+
+  // 归一化权重
+  const total = Math.abs(gB) + Math.abs(gH) + Math.abs(gR);
+  if (total < 1e-6) {
+    state.weights = { blink: 0.333, head: 0.333, rtCV: 0.334 };
+  } else {
+    state.weights = { blink: Math.abs(gB)/total, head: Math.abs(gH)/total, rtCV: Math.abs(gR)/total };
+  }
+  console.log('γ̄ 汇总:', { blink: gB?.toFixed(3), head: gH?.toFixed(3), rtCV: gR?.toFixed(3) });
+  console.log('方向系数:', { blink: state.directionBlink, head: state.directionHead, rt: state.directionRT });
+  console.log('归一化权重 w1-w3:', state.weights);
 }
 
 function calcEAR(pts) {
@@ -476,28 +622,43 @@ function startDetectionLoop() {
 
 // ============================================================
 // 5. 基线计算（漂移窗口结束后调用）
+// ── 同时计算：
+//   · 各信号的均值 / SD（用于 z 分归一化）
+//   · OLS 线性回归 β 和截距（自然漂移系数，用于 Block D 漂移修正）
+//     论文说明：β 为漂移窗口内信号对时间的最小二乘斜率；
+//     Ŝ_baseline（截距）为回归直线在窗口起点 t=0 的估计值。
 // ============================================================
 function computeBaseline() {
   const driftTrials = jsPsych.data.get()
     .filter({ phase: '漂移窗口' })
     .values()
-    .filter(d => d.blink_rate !== undefined && d.trial_type_custom !== 'fixation');
+    .filter(d => d.blink_rate !== undefined && d.trial_type_custom === 'stimulus');
+
+  state.driftEndTime = Date.now();
 
   if (driftTrials.length < 5) {
-    // 数据不足时使用安全默认值
     state.baseline = {
       blinkMean: 15, blinkStd: 3,
       headMean: 0.1, headStd: 0.05,
       rtCVMean: 0.25, rtCVStd: 0.08,
     };
+    // β 使用零值（无漂移假设）
+    state.driftBeta      = { blink: 0, head: 0, rtCV: 0 };
+    state.driftIntercept = { blink: 15, head: 0.1, rtCV: 0.25 };
     console.warn('基线数据不足，使用默认值');
     return;
   }
 
+  // 时间轴：用 time_elapsed（ms → 秒），以第一条试次为 t=0
+  const t0 = driftTrials[0].time_elapsed / 1000;
+  const xs = driftTrials.map(d => d.time_elapsed / 1000 - t0);
+
   const blinkArr = driftTrials.map(d => d.blink_rate);
   const headArr  = driftTrials.map(d => Math.abs(d.head_yaw) + Math.abs(d.head_pitch));
   const rtArr    = driftTrials.filter(d => d.rt_cv > 0).map(d => d.rt_cv);
+  const rtXs     = driftTrials.filter(d => d.rt_cv > 0).map(d => d.time_elapsed / 1000 - t0);
 
+  // 均值 / SD（用于 z 分）
   state.baseline = {
     blinkMean: arrMean(blinkArr),
     blinkStd:  Math.max(arrStd(blinkArr), 0.5),
@@ -506,40 +667,73 @@ function computeBaseline() {
     rtCVMean:  rtArr.length ? arrMean(rtArr) : 0.25,
     rtCVStd:   rtArr.length ? Math.max(arrStd(rtArr), 0.01) : 0.08,
   };
+
+  // OLS 线性回归 → β（自然漂移斜率）和截距（Ŝ_baseline）
+  const blinkReg = linearRegression(xs, blinkArr);
+  const headReg  = linearRegression(xs, headArr);
+  const rtReg    = rtArr.length >= 5
+    ? linearRegression(rtXs, rtArr)
+    : { beta: 0, intercept: state.baseline.rtCVMean };
+
+  state.driftBeta      = { blink: blinkReg.beta,      head: headReg.beta,      rtCV: rtReg.beta };
+  state.driftIntercept = { blink: blinkReg.intercept, head: headReg.intercept, rtCV: rtReg.intercept };
+
+  // ── 自然回归系数 β（无反馈条件 WLS 估计）
+  // 各信号先转为简单 z 分（(值-均值)/SD），基线=0，
+  // 相邻 trial 对：β̂ₜ = -(zₜ₊₁-zₜ)/zₜ；WLS 以 |zₜ| 为权重
+  const toZ = (arr, mean, std) => arr.map(v => (v - mean) / std);
+  const wlsBeta = zs => {
+    const entries = [];
+    for (let i = 0; i < zs.length - 1; i++) {
+      if (Math.abs(zs[i]) < 0.1) continue;
+      entries.push({ gammaHat: -(zs[i+1] - zs[i]) / zs[i], weight: Math.abs(zs[i]) });
+    }
+    return computeWLSGamma(entries);
+  };
+  const blinkZs = toZ(blinkArr, state.baseline.blinkMean, state.baseline.blinkStd);
+  const headZs  = toZ(headArr,  state.baseline.headMean,  state.baseline.headStd);
+  const rtZs    = rtArr.length >= 5
+    ? toZ(rtArr, state.baseline.rtCVMean, state.baseline.rtCVStd) : [];
+
+  state.naturalBeta = {
+    blink: wlsBeta(blinkZs),
+    head:  wlsBeta(headZs),
+    rtCV:  rtZs.length >= 4 ? wlsBeta(rtZs) : 0,
+  };
+
   console.log('基线计算完成:', state.baseline);
+  console.log('漂移回归 β（时间趋势）:', state.driftBeta);
+  console.log('截距 Ŝ_baseline:', state.driftIntercept);
+  console.log('自然回归系数 β（控制模型）:', state.naturalBeta);
 }
 
 // ============================================================
 // 6. 能量计算
 // ============================================================
-function computeZScoreEnergy(useBlink, useHead, useRT) {
+
+// ── Block A/B/C：中性幅度（|ΔSₜ|）→ 颜色 ────────────────────
+// 论文说明：A/B/C 阶段色环仅显示信号偏离基线的幅度（无方向），
+//   绿色=贴近基线（信号稳定），红色=远离基线（信号波动大）。
+//   颜色不暗示"好"或"坏"，避免在方向性验证完成前引入需求特征。
+function computeNeutralEnergy(z) {
+  return clamp(50 - Math.abs(z) * 18, 5, 95);
+}
+
+// ── Block D 真反馈：加权定向融合 Sₜ → ΔSₜ → 颜色 ───────────
+// ΔSₜ = Sₜ（因为融合后基线=0）；正值→好状态→绿，负值→差状态→红
+// 映射：energy = 50 + Sₜ × 20，clamp 到 0-100
+function fusedEnergy() {
+  const s = getFusedS();
+  return clamp(50 + s * 20, 0, 100);
+}
+
+// ── 单信号能量（A/B/C 中立显示）────────────────────────────
+function singleSignalEnergy(key) {
   if (!state.baseline) return 50;
-  const b = state.baseline;
-
-  let zSum = 0, count = 0;
-
-  if (useBlink) {
-    const z = (state.blinkRate - b.blinkMean) / b.blinkStd;
-    zSum += z; count++;
-  }
-  if (useHead) {
-    const headInst = Math.abs(state.headYaw) + Math.abs(state.headPitch);
-    const z = (headInst - b.headMean) / b.headStd;
-    zSum += z; count++;
-  }
-  if (useRT && state.rtHistory.length >= 5) {
-    const z = (state.rtCV - b.rtCVMean) / b.rtCVStd;
-    zSum += z; count++;
-  }
-
-  if (count === 0) return 50;
-  const zAvg = zSum / count;
-  // z=0 → energy=50, z=-2(更好) → ~90, z=+2(更差) → ~10
-  return clamp(50 - zAvg * 20, 0, 100);
+  return computeNeutralEnergy(getSingleZ(key));
 }
 
 function computeFakeEnergy() {
-  // 有机随机游走，范围20-80，看起来真实
   state.fakeEnergy += (Math.random() - 0.48) * 4;
   state.fakeEnergy = clamp(state.fakeEnergy, 20, 80);
   return state.fakeEnergy;
@@ -547,11 +741,11 @@ function computeFakeEnergy() {
 
 function computeEnergy() {
   const b = state.currentBlock;
-  if (b === 'Block_A')  return computeZScoreEnergy(true,  false, false);
-  if (b === 'Block_B')  return computeZScoreEnergy(false, true,  false);
-  if (b === 'Block_C')  return computeZScoreEnergy(false, false, true);
-  if (b === 'Block_D1') return D1_IS_TRUE ? computeZScoreEnergy(true, true, true) : computeFakeEnergy();
-  if (b === 'Block_D2') return D2_IS_TRUE ? computeZScoreEnergy(true, true, true) : computeFakeEnergy();
+  if (b === 'Block_A')  return singleSignalEnergy('blink');
+  if (b === 'Block_B')  return singleSignalEnergy('head');
+  if (b === 'Block_C')  return singleSignalEnergy('rtCV');
+  if (b === 'Block_D1') return D1_IS_TRUE ? fusedEnergy() : computeFakeEnergy();
+  if (b === 'Block_D2') return D2_IS_TRUE ? fusedEnergy() : computeFakeEnergy();
   return 50;
 }
 
@@ -562,6 +756,27 @@ function updateEnergy() {
   if (state.energyLevel < 35)      ring.style.borderColor = '#e74c3c';
   else if (state.energyLevel < 65) ring.style.borderColor = '#f39c12';
   else                              ring.style.borderColor = '#2ecc71';
+}
+
+// ── Block A/B/C 结束后：聚合单信号 γ̄，存入 gammaBar ────────
+// 论文说明：此处不再使用 Pearson r 判断方向；
+//   方向 d_k = sign(γ̄_k)，即"反馈在默认方向下是否驱动了状态回归"。
+//   γ̄_k > 0 表示反馈有效（信号向基线回归），保持默认方向（信号↑=状态差）；
+//   γ̄_k ≤ 0 表示反馈无效或逆向，Block D 中翻转该信号方向。
+//   方向和权重统一在 computeAndUpdateWeights() 中整合。
+function computeDirectionCoeff(blockName) {
+  const keyMap = { Block_A: 'blink', Block_B: 'head', Block_C: 'rtCV' };
+  const key = keyMap[blockName];
+  if (!key) return;
+
+  const entries = state.gammaLog[key];
+  const gammaBar = computeWLSGamma(entries);
+
+  if (blockName === 'Block_A') state.gammaBar.blink = gammaBar;
+  if (blockName === 'Block_B') state.gammaBar.head  = gammaBar;
+  if (blockName === 'Block_C') state.gammaBar.rtCV  = gammaBar;
+
+  console.log(`γ̄ 聚合 ${blockName} [${key}]: γ̄=${gammaBar.toFixed(3)}, n=${entries.length}个有效对`);
 }
 
 // ============================================================
@@ -626,9 +841,9 @@ function submitContact() {
     alert('请输入微信号或手机号');
     return;
   }
-  // Step 9 会在这里加入 EmailJS 发送
-  // 联系方式单独放在邮件正文，不写入行为数据CSV
-  console.log('联系方式:', contact, '| 奖励:', state.rewardChoice, '| 专属码:', state.completionCode);
+  // 单独发一封只含联系方式的邮件，行为数据与身份信息物理分离
+  sendExperimentEmail(contact, state.rewardChoice);
+  console.log('联系方式已提交并发送:', contact);
   document.getElementById('submitContactBtn').disabled = true;
   document.getElementById('contactConfirm').style.display = 'block';
   document.getElementById('contactConfirm').textContent =
@@ -685,6 +900,21 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
   const { sequence, isTarget } = seqObj;
   const trials = [];
 
+  // 判断该 block 对应哪个 gammaLog 键（A/B/C 各自的单信号，D 用融合）
+  const gammaKey =
+    blockName === 'Block_A'  ? 'blink' :
+    blockName === 'Block_B'  ? 'head'  :
+    blockName === 'Block_C'  ? 'rtCV'  :
+    (blockName === 'Block_D1' || blockName === 'Block_D2') ? 'd' : null;
+
+  const naturalBetaForBlock =
+    blockName === 'Block_A'  ? () => state.naturalBeta.blink :
+    blockName === 'Block_B'  ? () => state.naturalBeta.head  :
+    blockName === 'Block_C'  ? () => state.naturalBeta.rtCV  :
+    () => state.weights.blink * state.naturalBeta.blink
+        + state.weights.head  * state.naturalBeta.head
+        + state.weights.rtCV  * state.naturalBeta.rtCV;
+
   sequence.forEach((letter, i) => {
     // 注视点
     trials.push({
@@ -700,12 +930,21 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
       data: { phase: blockName, trial_type_custom: 'fixation' }
     });
 
-    // 字母刺激（response_ends_trial: false → 严格按时长走）
+    // 「无需操作」提示：前 nBack 个字母不需要作答
+    // 论文说明：因 n-back 任务第一个有效比较发生在第 nBack+1 个字母，
+    //   前 nBack 个字母显示灰色提示，避免被试焦虑或作出无意义响应。
+    const isWarmupTrial = i < nBack;
+    const noActionHint = isWarmupTrial
+      ? `<div style="font-size:15px;color:#888;margin-top:6px">（前${nBack}个字母无需作答）</div>`
+      : '';
+
+    // 字母刺激
     trials.push({
       type: jsPsychHtmlKeyboardResponse,
       stimulus: function() {
         return `
           <div class="letter-display">${letter}</div>
+          ${noActionHint}
           <div class="phase-label">${blockName} &nbsp;|&nbsp; ${i+1} / ${sequence.length}</div>
           <div id="energyRing"></div>
         `;
@@ -713,7 +952,7 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
       choices: ['f', 'j'],
       trial_duration: TRIAL_DURATION,
       stimulus_duration: STIM_DURATION,
-      response_ends_trial: false,          // ← 核心修复：按键不跳过trial
+      response_ends_trial: false,
       on_finish: function(data) {
         const responded = data.response !== null;
         const correct =
@@ -732,15 +971,49 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
         data.rt_cv             = +state.rtCV.toFixed(3);
         data.energy            = +state.energyLevel.toFixed(1);
         data.trial_type_custom = 'stimulus';
-        // 记录该trial所属条件（用于分析时区分真伪反馈）
         if (blockName === 'Block_D1') data.feedback_type = D1_IS_TRUE ? 'true' : 'fake';
         if (blockName === 'Block_D2') data.feedback_type = D2_IS_TRUE ? 'true' : 'fake';
 
         if (responded) updateRTHistory(data.rt);
+
+        // ── 逐 trial 反馈增益 γ̂ 计算 ────────────────────────
+        // A/B/C 模型（β_k=0）：γ̂ = -(S_{t+1}-S_t) / ΔS_t
+        // Block D 模型（含复合β）：γ̂ = -(S_{t+1}-S_t) / ΔS_t - β_composite
+        if (gammaKey && state.baseline) {
+          let currS;
+          if (gammaKey === 'd') {
+            currS = getFusedS();
+            data.fused_s = +currS.toFixed(3);
+            if (state.prevFusedS !== null) {
+              const deltaS = state.prevFusedS;
+              if (Math.abs(deltaS) > 0.05) {
+                const betaComposite = naturalBetaForBlock();
+                const gammaHat = -(currS - state.prevFusedS) / deltaS - betaComposite;
+                state.gammaLog.d.push({ gammaHat, weight: Math.abs(deltaS) });
+                data.gamma_hat = +gammaHat.toFixed(3);
+              }
+            }
+            state.prevFusedS = currS;
+          } else {
+            currS = getSingleZ(gammaKey);
+            data.single_z = +currS.toFixed(3);
+            const prev = state.prevZ[gammaKey];
+            if (prev !== null) {
+              const deltaS = prev;
+              if (Math.abs(deltaS) > 0.05) {
+                // β_k=0：不减自然回归项
+                const gammaHat = -(currS - prev) / deltaS;
+                state.gammaLog[gammaKey].push({ gammaHat, weight: Math.abs(deltaS) });
+                data.gamma_hat = +gammaHat.toFixed(3);
+              }
+            }
+            state.prevZ[gammaKey] = currS;
+          }
+        }
       }
     });
 
-    // 热身阶段即时反馈
+    // 热身阶段即时正误反馈
     if (showFeedback) {
       trials.push({
         type: jsPsychHtmlKeyboardResponse,
@@ -819,6 +1092,189 @@ const baselineTriggerTrial = {
   trial_duration: 800,
   on_start: function() { computeBaseline(); }
 };
+
+// 方向系数计算触发trial（Block A/B/C 各自结束后无感知调用）
+function makeDirectionTrigger(blockName) {
+  return {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '<div style="margin-top:200px;color:#333;font-size:16px">正在分析信号方向...</div>',
+    choices: 'NO_KEYS',
+    trial_duration: 400,
+    on_start: function() { computeDirectionCoeff(blockName); }
+  };
+}
+
+// 三个 block 全部完成后更新权重（无感知，Block D 前调用）
+const weightsUpdateTrigger = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: '<div style="margin-top:200px;color:#333;font-size:16px">正在整合信号权重...</div>',
+  choices: 'NO_KEYS',
+  trial_duration: 400,
+  on_start: function() { computeAndUpdateWeights(); }
+};
+
+// Block D 结束后聚合 γ̄_D（真反馈 block 才有意义）
+function makeBlockDGammaTrigger(blockName) {
+  return {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '<div style="margin-top:200px;color:#333;font-size:16px">正在计算反馈增益...</div>',
+    choices: 'NO_KEYS',
+    trial_duration: 400,
+    on_start: function() {
+      const isTrueBlock =
+        (blockName === 'Block_D1' && D1_IS_TRUE) ||
+        (blockName === 'Block_D2' && D2_IS_TRUE);
+      if (isTrueBlock) {
+        const g = computeWLSGamma(state.gammaLog.d);
+        state.gammaBar.d = g;
+        console.log(`Block D (${blockName}) γ̄ =`, g.toFixed(3));
+      }
+    }
+  };
+}
+
+// A/B/C 顺序在页面加载时随机确定（平衡顺序效应）
+// 论文说明：Block A/B/C 采用被试间拉丁方顺序随机化，以控制练习效应。
+const BLOCK_ABC_ORDER = ['A','B','C'].sort(() => Math.random() - 0.5);
+
+// A/B/C 各 block 的配置（与字母无关，随顺序排列）
+const BLOCK_ABC_CONFIG = {
+  A: {
+    seq:       () => sequences.blockA,
+    phaseName: 'Block_A',
+    signal:    'blink_rate',
+    title:     'Block A（约1.5分钟）',
+    desc:      '能量环将根据你的 <strong>眨眼频率</strong> 实时变化。',
+  },
+  B: {
+    seq:       () => sequences.blockB,
+    phaseName: 'Block_B',
+    signal:    'head_yaw',
+    title:     'Block B（约1分钟）',
+    desc:      '能量环将根据你的 <strong>头部姿态稳定性</strong> 实时变化。',
+  },
+  C: {
+    seq:       () => sequences.blockC,
+    phaseName: 'Block_C',
+    signal:    'rt_cv',
+    title:     'Block C（约2分钟）',
+    desc:      '能量环将根据你的 <strong>按键节律稳定性</strong> 实时变化。',
+  },
+};
+
+// ============================================================
+// EmailJS 数据发送
+// ── 配置说明：在 emailjs.com 注册并填写以下三个 ID
+//    SERVICE_ID:  你的 Email Service（如 Gmail）的服务 ID
+//    TEMPLATE_ID: 邮件模板 ID（模板中用 {{message}} 接收正文）
+//    PUBLIC_KEY:  账号 Public Key（在 Account → API Keys 中查看）
+// ============================================================
+const EMAILJS_SERVICE_ID  = 'YOUR_SERVICE_ID';
+const EMAILJS_TEMPLATE_ID = 'YOUR_TEMPLATE_ID';
+const EMAILJS_PUBLIC_KEY  = 'YOUR_PUBLIC_KEY';
+
+// 聚合单个 block 的绩效摘要
+function aggregateBlock(phaseName) {
+  const trials = jsPsych.data.get()
+    .filter({ phase: phaseName, trial_type_custom: 'stimulus' })
+    .values()
+    .filter(d => d.responded !== undefined);
+  if (!trials.length) return null;
+  const acc = trials.filter(d => d.correct).length / trials.length;
+  const rts  = trials.filter(d => d.rt > 0).map(d => d.rt);
+  const energies = trials.filter(d => d.energy !== undefined).map(d => d.energy);
+  return {
+    n:        trials.length,
+    acc:      (acc * 100).toFixed(1) + '%',
+    rt:       rts.length ? Math.round(arrMean(rts)) + 'ms' : 'N/A',
+    energy:   energies.length ? arrMean(energies).toFixed(1) : 'N/A',
+  };
+}
+
+function buildEmailBody(contact, reward) {
+  const now  = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const b    = state.baseline    || {};
+  const nb   = state.naturalBeta || {};
+  const gb   = state.gammaBar    || {};
+  const w    = state.weights     || {};
+  const intc = state.driftIntercept || {};
+
+  const fmt = (v, d=3) => (v != null && isFinite(v)) ? (+v).toFixed(d) : 'N/A';
+
+  const blk = name => {
+    const s = aggregateBlock(name);
+    return s ? `${name.padEnd(14)}: 准确率=${s.acc}  RT=${s.rt}  均值能量=${s.energy}` : `${name.padEnd(14)}: 无数据`;
+  };
+
+  let tlxLine = 'N/A';
+  try {
+    const tlxData = jsPsych.data.get().filter({ trial_type: 'survey-html-form' }).last(1).values()[0] || {};
+    const r = tlxData.response || {};
+    tlxLine = Object.entries(r).map(([k,v]) => `${k}=${v}`).join('  ');
+  } catch(e) {}
+
+  const pauseTotal = state.pauseLog.reduce((s, p) => s + (p.end - p.start), 0);
+  const wTotal = (w.blink||0) + (w.head||0) + (w.rtCV||0);
+
+  return `
+=== 参与者 ===
+专属码: ${state.completionCode || 'N/A'}  |  时间: ${now}
+奖励选择: ${reward || '未填写'}  |  联系方式: ${contact || '未填写'}
+Block A/B/C 顺序: ${BLOCK_ABC_ORDER.join('-')}
+
+=== 个体基线（漂移窗口 OLS 回归）===
+Ŝ_baseline（截距）:  眨眼=${fmt(intc.blink,2)}/min  头部=${fmt(intc.head,3)}  按键CV=${fmt(intc.rtCV,3)}
+SD（归一化用）:       眨眼=${fmt(b.blinkStd,2)}      头部=${fmt(b.headStd,3)}  按键CV=${fmt(b.rtCVStd,3)}
+
+=== 自然回归系数 β（漂移窗口 WLS 估计，理论参考值，不纳入 A/B/C 公式）===
+β_blink=${fmt(nb.blink,4)}  β_head=${fmt(nb.head,5)}  β_rtCV=${fmt(nb.rtCV,5)}
+（注：本研究假设 β_k=0，上述值为漂移窗口实测估计，仅供参考）
+
+=== 单信号反馈增益 γ̄（Block A/B/C WLS 聚合）===
+γ̄1 眨眼 (Block A): ${fmt(gb.blink)}  →  direction=${state.directionBlink}  (${state.directionBlink===1?'信号↑=状态差':'信号↑=状态好'})
+γ̄2 头部 (Block B): ${fmt(gb.head)}  →  direction=${state.directionHead}  (${state.directionHead===1?'信号↑=状态差':'信号↑=状态好'})
+γ̄3 按键 (Block C): ${fmt(gb.rtCV)}  →  direction=${state.directionRT}  (${state.directionRT===1?'信号↑=状态差':'信号↑=状态好'})
+
+=== 归一化权重 w1-w3（∝ |γ̄_k|）===
+w1 眨眼=${fmt(w.blink)}  w2 头部=${fmt(w.head)}  w3 按键=${fmt(w.rtCV)}  总和=${fmt(wTotal)}
+
+=== Block D 复合反馈增益 γ̄_D（真反馈 block）===
+γ̄_D = ${fmt(gb.d)}  （真反馈 block: ${D1_IS_TRUE ? 'D1' : 'D2'}）
+
+=== Block 绩效摘要 ===
+${blk('热身(1-back)')}
+${blk('高负荷')}
+${blk('漂移窗口')}
+${blk('Block_A')}
+${blk('Block_B')}
+${blk('Block_C')}
+${blk('Block_D1')}  [${D1_IS_TRUE ? '真反馈' : '假反馈'}]
+${blk('Block_D2')}  [${D2_IS_TRUE ? '真反馈' : '假反馈'}]
+
+=== NASA-TLX ===
+${tlxLine}
+
+=== 实验控制 ===
+D1=${D1_IS_TRUE?'真反馈':'假反馈'}  D2=${D2_IS_TRUE?'真反馈':'假反馈'}
+暂停次数=${state.pauseLog.length}  总暂停=${Math.round(pauseTotal/1000)}s
+`.trim();
+}
+
+async function sendExperimentEmail(contact, reward) {
+  // 检查 emailjs 是否已载入
+  if (typeof emailjs === 'undefined') {
+    console.warn('EmailJS 未载入，跳过发送。本地 body:', buildEmailBody(contact, reward));
+    return;
+  }
+  try {
+    emailjs.init(EMAILJS_PUBLIC_KEY);
+    const body = buildEmailBody(contact, reward);
+    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { message: body });
+    console.log('✅ 实验数据邮件已发送');
+  } catch(e) {
+    console.error('EmailJS 发送失败:', e);
+  }
+}
 
 // ============================================================
 // 13. NASA-TLX 问卷
@@ -928,36 +1384,26 @@ function buildTimeline() {
     <p>系统将在此阶段建立你的<strong>个体状态基准</strong>，用于后续能量环的个性化校准。</p>
   `));
   tl.push(...createNBackBlock(sequences.drift, '漂移窗口', false, 2));
-
-  // 漂移窗口结束后计算基线（无感知）
   tl.push(baselineTriggerTrial);
 
-  // ── Block A ──
-  tl.push(makeInstruction(`
-    <h2>Block A（约1.5分钟）</h2>
-    <p>继续 2-back 任务。</p>
-    <p>能量环将根据你的 <strong>眨眼频率</strong> 实时变化。</p>
-    ${RING_LEGEND_HTML}
-  `));
-  tl.push(...createNBackBlock(sequences.blockA, 'Block_A', false, 2));
+  // ── Block A/B/C（顺序随机化，控制练习效应）──
+  // 论文说明：三个单信号验证 block 采用被试间伪随机顺序（BLOCK_ABC_ORDER），
+  //   每名被试在实验开始时随机决定顺序，结果记录在数据中。
+  for (const letter of BLOCK_ABC_ORDER) {
+    const cfg = BLOCK_ABC_CONFIG[letter];
+    const seqKey = { A: 'blockA', B: 'blockB', C: 'blockC' }[letter];
+    tl.push(makeInstruction(`
+      <h2>${cfg.title}</h2>
+      <p>继续 2-back 任务。</p>
+      <p>${cfg.desc}</p>
+      ${RING_LEGEND_HTML}
+    `));
+    tl.push(...createNBackBlock(sequences[seqKey], cfg.phaseName, false, 2));
+    tl.push(makeDirectionTrigger(cfg.phaseName));
+  }
 
-  // ── Block B ──
-  tl.push(makeInstruction(`
-    <h2>Block B（约1分钟）</h2>
-    <p>继续 2-back 任务。</p>
-    <p>能量环将根据你的 <strong>头部姿态稳定性</strong> 实时变化。</p>
-    ${RING_LEGEND_HTML}
-  `));
-  tl.push(...createNBackBlock(sequences.blockB, 'Block_B', false, 2));
-
-  // ── Block C ──
-  tl.push(makeInstruction(`
-    <h2>Block C（约2分钟）</h2>
-    <p>继续 2-back 任务。</p>
-    <p>能量环将根据你的 <strong>按键节律稳定性</strong> 实时变化。</p>
-    ${RING_LEGEND_HTML}
-  `));
-  tl.push(...createNBackBlock(sequences.blockC, 'Block_C', false, 2));
+  // ── 三信号全部完成后：整合权重和方向（无感知）──
+  tl.push(weightsUpdateTrigger);
 
   // ── Block D-1 ──
   tl.push(makeInstruction(`
@@ -967,6 +1413,7 @@ function buildTimeline() {
     ${RING_LEGEND_HTML}
   `));
   tl.push(...createNBackBlock(sequences.blockD1, 'Block_D1', false, 2));
+  tl.push(makeBlockDGammaTrigger('Block_D1'));
 
   // ── 清洗期倒计时 ──
   tl.push(makeCountdownRest(60, '清洗期休息（1分钟）'));
@@ -979,6 +1426,7 @@ function buildTimeline() {
     ${RING_LEGEND_HTML}
   `));
   tl.push(...createNBackBlock(sequences.blockD2, 'Block_D2', false, 2));
+  tl.push(makeBlockDGammaTrigger('Block_D2'));
 
   // ── NASA-TLX 问卷 ──
   tl.push(makeInstruction(`
@@ -1001,10 +1449,11 @@ async function startExperiment() {
   jsPsych = initJsPsych({
     display_element: 'jspsych-target',
     on_finish: function() {
-      // 记录真伪分配结果（研究者可在数据里看到）
+      // 记录真伪分配结果
       jsPsych.data.addProperties({
         D1_feedback: D1_IS_TRUE ? 'true' : 'fake',
         D2_feedback: D2_IS_TRUE ? 'true' : 'fake',
+        block_abc_order: BLOCK_ABC_ORDER.join(''),
         pause_count: state.pauseLog.length,
         total_pause_ms: state.pauseLog.reduce((s,p) => s + (p.end - p.start), 0),
       });
@@ -1015,7 +1464,8 @@ async function startExperiment() {
       document.getElementById('keyHint').style.display = 'none';
       document.getElementById('ringLegend').style.display = 'none';
 
-      // Step 9: 在此处加入 EmailJS 发送逻辑
+      // 实验结束自动发送行为数据邮件（不含联系方式）
+      sendExperimentEmail(null, null);
       console.log('实验完成！数据条数:', jsPsych.data.get().count());
     }
   });
