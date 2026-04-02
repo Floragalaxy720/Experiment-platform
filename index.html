@@ -650,6 +650,80 @@ function showInvalidData() {
 // ============================================================
 // 11. 键盘事件：暂停、不活跃重置、研究者绕过、管理面板
 // ============================================================
+
+// 研究者绕过弹窗（用自定义 HTML overlay 替代 prompt()）
+// 原因：window.prompt() 同步阻塞 JS 线程，导致 jsPsych 内部计时器状态错乱，
+//       jsPsych.finishTrial() 在 prompt 关闭后无法正常执行。
+function showResearcherModal() {
+  if (document.getElementById('researcherModal')) return;
+  const modal = document.createElement('div');
+  modal.id = 'researcherModal';
+  modal.style.cssText = [
+    'position:fixed','top:0','left:0','right:0','bottom:0',
+    'background:rgba(0,0,0,0.88)','z-index:9999',
+    'display:flex','align-items:center','justify-content:center'
+  ].join(';');
+  modal.innerHTML = `
+    <div style="background:#16213e;border:2px solid #3498db;border-radius:14px;padding:34px 40px;min-width:320px;text-align:center;">
+      <h3 style="color:#3498db;margin:0 0 18px;font-size:19px;">🔧 研究者内部码</h3>
+      <input id="resPwdInput" type="password" placeholder="请输入密码"
+        style="width:100%;padding:10px 14px;border-radius:7px;border:1px solid #444;
+               background:#0d1b2a;color:white;font-size:16px;margin-bottom:12px;">
+      <p id="resPwdError" style="color:#e74c3c;font-size:13px;margin:0 0 12px;display:none;">密码错误，请重试</p>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        <button id="resConfirmBtn"
+          style="padding:10px 28px;background:#3498db;color:white;border:none;border-radius:7px;font-size:15px;cursor:pointer;font-weight:bold;">
+          确认 ↵
+        </button>
+        <button id="resCancelBtn"
+          style="padding:10px 22px;background:#444;color:#ccc;border:none;border-radius:7px;font-size:15px;cursor:pointer;">
+          取消
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const input    = document.getElementById('resPwdInput');
+  const errMsg   = document.getElementById('resPwdError');
+  const confirmB = document.getElementById('resConfirmBtn');
+  const cancelB  = document.getElementById('resCancelBtn');
+
+  // 自动聚焦
+  requestAnimationFrame(() => input.focus());
+
+  function closeModal() {
+    const m = document.getElementById('researcherModal');
+    if (m) m.remove();
+  }
+
+  function doBypass() {
+    if (input.value === RESEARCHER_PASSWORD) {
+      closeModal();
+      state.researcherBypass = true;
+      state.isTestMode       = true;
+      state.inactivityActive = false;
+      clearInactivityTimer();
+      // 延迟执行，确保 modal DOM 完全移除后再结束 trial
+      setTimeout(() => {
+        try { jsPsych.finishTrial({ researcher_skip: true }); }
+        catch(ex) { console.warn('finishTrial error:', ex); }
+      }, 60);
+    } else {
+      errMsg.style.display = 'block';
+      input.value = '';
+      input.focus();
+    }
+  }
+
+  confirmB.addEventListener('click', doBypass);
+  cancelB .addEventListener('click', closeModal);
+  input.addEventListener('keydown', ev => {
+    ev.stopPropagation();          // 阻止触发实验键盘监听器
+    if (ev.key === 'Enter')  doBypass();
+    if (ev.key === 'Escape') closeModal();
+  });
+}
+
 document.addEventListener('keydown', e => {
   if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
 
@@ -680,17 +754,10 @@ document.addEventListener('keydown', e => {
     if (state.inactivityActive) startInactivityTimer();
     return;
   }
-  // \ 键：研究者绕过（进入测试模式，跳到下一阶段指导语，不发邮件）
+  // \ 键：研究者绕过
   if (e.key==='\\' && !e.ctrlKey) {
     e.preventDefault();
-    const pwd = prompt('研究者内部码：');
-    if (pwd===RESEARCHER_PASSWORD) {
-      state.researcherBypass = true;
-      state.isTestMode = true;
-      clearInactivityTimer();
-      state.inactivityActive = false;
-      try { jsPsych.finishTrial({researcher_skip:true}); } catch(ex) {}
-    } else if (pwd!==null) { alert('密码错误'); }
+    showResearcherModal();
     return;
   }
   // Ctrl+\ ：管理员面板
@@ -1014,12 +1081,17 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
       choices: 'NO_KEYS',
       trial_duration: 300,
       on_start: function() {
-        if (state.researcherBypass) { jsPsych.finishTrial({skipped:true}); return; }
         state.currentBlock = blockName;
         state.inactivityActive = false;
         clearInactivityTimer();
         document.getElementById('keyHint').style.display = 'block';
         document.getElementById('ringLegend').style.display = 'block';
+      },
+      on_load: function() {
+        // on_load 内跳过：trial 已完全初始化，finishTrial() 安全可调
+        if (state.researcherBypass) {
+          setTimeout(() => { try { jsPsych.finishTrial({skipped:true}); } catch(e){} }, 10);
+        }
       },
       data: {phase:blockName, trial_type_custom:'fixation'}
     });
@@ -1040,12 +1112,18 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
       choices: ['f','j'],
       trial_duration: TRIAL_DURATION,
       stimulus_duration: STIM_DURATION,
-      response_ends_trial: false,  // 只记录第一次按键，trial 不提前结束
+      response_ends_trial: false,
       on_start: function() {
-        if (state.researcherBypass) { jsPsych.finishTrial({skipped:true}); return; }
         if (!isWarmup) {
           state.inactivityActive = true;
           startInactivityTimer();
+        }
+      },
+      on_load: function() {
+        if (state.researcherBypass) {
+          state.inactivityActive = false;
+          clearInactivityTimer();
+          setTimeout(() => { try { jsPsych.finishTrial({skipped:true}); } catch(e){} }, 10);
         }
       },
       on_finish: function(data) {
@@ -1118,7 +1196,11 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
         },
         choices: 'NO_KEYS',
         trial_duration: 500,
-        on_start: function() { if (state.researcherBypass) { jsPsych.finishTrial({skipped:true}); return; } },
+        on_load: function() {
+          if (state.researcherBypass) {
+            setTimeout(() => { try { jsPsych.finishTrial({skipped:true}); } catch(e){} }, 10);
+          }
+        },
         data: {phase:blockName, trial_type_custom:'feedback'}
       });
     }
@@ -1166,12 +1248,17 @@ function makeCountdownRest(seconds, label) {
     choices: [' '],
     trial_duration: seconds*1000,
     on_start: function() {
-      if (state.researcherBypass) { jsPsych.finishTrial({skipped:true}); return; }
       state.currentBlock = 'rest';
       state.inactivityActive = false;
       clearInactivityTimer();
       document.getElementById('keyHint').style.display = 'none';
       document.getElementById('ringLegend').style.display = 'none';
+    },
+    on_load: function() {
+      if (state.researcherBypass) {
+        setTimeout(() => { try { jsPsych.finishTrial({skipped:true}); } catch(e){} }, 10);
+        return;
+      }
       let rem = seconds;
       const iv = setInterval(() => {
         rem--;
@@ -1189,8 +1276,11 @@ function makeTrigger(label, fn, ms=600) {
     stimulus: `<div style="margin-top:200px;color:#333;font-size:14px">${label}</div>`,
     choices: 'NO_KEYS',
     trial_duration: ms,
-    on_start: function() {
-      if (state.researcherBypass) { jsPsych.finishTrial({skipped:true}); return; }
+    on_load: function() {
+      if (state.researcherBypass) {
+        setTimeout(() => { try { jsPsych.finishTrial({skipped:true}); } catch(e){} }, 10);
+        return;
+      }
       fn();
     }
   };
