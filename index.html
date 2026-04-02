@@ -1,255 +1,109 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <title>N-back Experiment</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>N-back 认知实验</title>
   <script src="jspsych.js"></script>
   <link href="jspsych.css" rel="stylesheet" />
   <script src="plugin-html-keyboard-response.js"></script>
   <script src="https://unpkg.com/@jspsych/plugin-survey-html-form@1.0.3/dist/index.browser.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <style>
-    * { box-sizing: border-box; }
-    body {
-      text-align: center;
-      font-family: Arial, sans-serif;
-      background: #1a1a2e;
-      color: white;
-      margin: 0; padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { text-align: center; font-family: Arial, sans-serif; background: #1a1a2e; color: white; }
     #jspsych-target { min-height: 100vh; }
 
-    .letter-display {
-      font-size: 120px;
-      font-family: monospace;
-      font-weight: bold;
-      color: #e0e0ff;
-      line-height: 1;
-      margin-top: 40px;
-    }
-    .instruction-box {
-      max-width: 640px;
-      margin: 30px auto;
-      font-size: 18px;
-      line-height: 1.9;
-      background: #16213e;
-      padding: 36px 44px;
-      border-radius: 12px;
-      text-align: left;
-    }
-    .instruction-box h2 { text-align: center; margin-top: 0; }
-    .highlight-box {
-      background: #0d1b2a;
-      padding: 12px 18px;
-      border-radius: 8px;
-      text-align: center;
-      margin: 10px 0;
-    }
+    .letter-display { font-size: 120px; font-family: monospace; font-weight: bold; color: #e0e0ff; line-height: 1; margin-top: 40px; }
+    .instruction-box { max-width: 640px; margin: 30px auto; font-size: 17px; line-height: 1.85; background: #16213e; padding: 36px 44px; border-radius: 12px; text-align: left; }
+    .instruction-box h2 { text-align: center; margin-top: 0; margin-bottom: 16px; }
+    .highlight-box { background: #0d1b2a; padding: 12px 18px; border-radius: 8px; text-align: center; margin: 10px 0; }
+    .task-box { background: #0a2a1a; border: 1px solid #2ecc71; padding: 12px 18px; border-radius: 8px; margin: 12px 0; }
     .phase-label { font-size: 13px; color: #555; margin-top: 8px; }
+    .no-action-hint { font-size: 14px; color: #f39c12; margin-top: 10px; padding: 5px 16px; background: rgba(243,156,18,0.08); border: 1px solid rgba(243,156,18,0.25); border-radius: 6px; display: inline-block; }
 
     /* 能量环 */
-    #energyRing {
-      width: 110px; height: 110px;
-      border-radius: 50%;
-      border: 12px solid #333;
-      margin: 12px auto 0;
-      transition: border-color 0.6s;
-    }
+    #energyRing { width: 110px; height: 110px; border-radius: 50%; border: 12px solid #333; margin: 12px auto 0; transition: border-color 0.5s; }
 
-    /* 摄像头小窗 */
-    #cameraContainer {
-      position: fixed;
-      top: 10px; right: 10px;
-      z-index: 1000;
-      display: none;
-    }
-    #camVideo {
-      width: 140px;
-      border-radius: 8px;
-      opacity: 0.75;
-      display: block;
-    }
+    /* 摄像头 */
+    #cameraContainer { position: fixed; top: 10px; right: 10px; z-index: 1000; display: none; }
+    #camVideo { width: 140px; border-radius: 8px; opacity: 0.75; display: block; }
     #camStatus { font-size: 11px; color: #777; text-align: center; margin-top: 3px; }
 
-    /* 底部按键提示 */
-    #keyHint {
-      position: fixed;
-      bottom: 16px; left: 50%;
-      transform: translateX(-50%);
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 8px;
-      padding: 7px 24px;
-      font-size: 14px; color: #999;
-      display: none;
-      z-index: 997;
-      white-space: nowrap;
-    }
+    /* 底部提示 */
+    #keyHint { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 7px 24px; font-size: 14px; color: #999; display: none; z-index: 997; white-space: nowrap; }
     #keyHint b { color: #ddd; }
 
-    /* 能量环图例（右下角） */
-    #ringLegend {
-      position: fixed;
-      bottom: 16px; right: 16px;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 8px;
-      padding: 6px 14px;
-      font-size: 12px; color: #888;
-      display: none;
-      z-index: 997;
-      line-height: 1.8;
-      text-align: left;
-    }
-    .ring-dot {
-      display: inline-block;
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      margin-right: 5px;
-      vertical-align: middle;
-    }
+    /* 信号环图例 */
+    #ringLegend { position: fixed; bottom: 16px; right: 16px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 14px; font-size: 12px; color: #888; display: none; z-index: 997; line-height: 1.8; text-align: left; }
+    .ring-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
 
     /* 暂停遮罩 */
-    #pauseOverlay {
-      display: none;
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.88);
-      z-index: 2000;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-    }
+    #pauseOverlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.88); z-index: 2000; align-items: center; justify-content: center; flex-direction: column; }
     #pauseOverlay.visible { display: flex; }
     #pauseOverlay h2 { font-size: 32px; margin-bottom: 16px; }
     #pauseOverlay p { font-size: 18px; color: #aaa; }
 
+    /* 不活跃警告 */
+    #inactivityWarning { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: #2a1500; border: 2px solid #f39c12; border-radius: 12px; padding: 24px 36px; z-index: 3500; text-align: center; min-width: 280px; }
+    #inactivityWarning h3 { color: #f39c12; font-size: 20px; margin-bottom: 8px; }
+    #inactivityWarning p { color: #ccc; font-size: 15px; }
+
+    /* 管理员面板 */
+    #adminPanel { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: #16213e; border: 2px solid #3498db; border-radius: 12px; padding: 28px 36px; z-index: 5000; text-align: center; min-width: 320px; }
+    #adminPanel h3 { color: #3498db; margin-bottom: 18px; font-size: 20px; }
+    #adminPanel .stat { font-size: 16px; margin: 8px 0; color: #ccc; }
+    #adminPanel .stat strong { color: white; }
+    .admin-btn { margin: 8px 4px; padding: 9px 22px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; }
+    .btn-toggle-open { background: #2ecc71; color: #1a1a2e; }
+    .btn-toggle-close { background: #e74c3c; color: white; }
+    .btn-panel-close { background: #555; color: #ccc; }
+
     /* 加载页 */
-    #loadingScreen {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: #1a1a2e;
-      z-index: 3000;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-    }
+    #loadingScreen { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #1a1a2e; z-index: 3000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     #loadingScreen h2 { font-size: 24px; margin-bottom: 20px; }
     #loadingStatus { font-size: 16px; color: #888; margin-bottom: 30px; }
-    #startBtn {
-      display: none;
-      padding: 14px 44px;
-      font-size: 18px;
-      background: #3498db; color: white;
-      border: none; border-radius: 8px; cursor: pointer;
-    }
+    #startBtn { display: none; padding: 14px 44px; font-size: 18px; background: #3498db; color: white; border: none; border-radius: 8px; cursor: pointer; }
     #startBtn:hover { background: #2980b9; }
 
     /* 完成页 */
-    #completionScreen {
-      display: none;
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: #1a1a2e;
-      z-index: 2500;
-      overflow-y: auto;
-      padding: 40px 16px;
-    }
+    #completionScreen { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #1a1a2e; z-index: 2500; overflow-y: auto; padding: 40px 16px; }
     #completionScreen.visible { display: block; }
-    .completion-box {
-      background: #16213e;
-      border-radius: 16px;
-      padding: 44px;
-      max-width: 520px;
-      margin: 0 auto;
-      text-align: center;
-    }
-    .code-display {
-      font-size: 36px;
-      font-family: monospace;
-      letter-spacing: 4px;
-      color: #f39c12;
-      background: rgba(243,156,18,0.1);
-      border: 2px solid #f39c12;
-      border-radius: 8px;
-      padding: 12px 24px;
-      margin: 16px 0;
-      display: inline-block;
-    }
-    .reward-buttons {
-      display: flex; gap: 14px;
-      justify-content: center;
-      margin-top: 16px;
-      flex-wrap: wrap;
-    }
-    .reward-btn {
-      padding: 12px 28px; font-size: 16px;
-      border: none; border-radius: 8px;
-      cursor: pointer; font-weight: bold;
-      transition: opacity 0.2s;
-    }
-    .reward-btn:hover { opacity: 0.85; }
-    .btn-cash { background: #2ecc71; color: #1a1a2e; }
-    .btn-gift { background: #e74c3c; color: white; }
-    .btn-none { background: #555; color: #ccc; font-size: 14px; padding: 10px 20px; }
+    .completion-box { background: #16213e; border-radius: 16px; padding: 40px; max-width: 540px; margin: 0 auto; }
+    .code-display { font-size: 36px; font-family: monospace; letter-spacing: 4px; color: #f39c12; background: rgba(243,156,18,0.1); border: 2px solid #f39c12; border-radius: 8px; padding: 12px 24px; margin: 12px 0; display: inline-block; }
+    .form-section { text-align: left; margin-top: 20px; }
+    .form-row { margin-bottom: 18px; }
+    .form-row > label { display: block; font-size: 15px; color: #ccc; margin-bottom: 7px; font-weight: bold; }
+    .form-row input[type=text], .form-row input[type=number] { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid #444; background: #0d1b2a; color: white; font-size: 15px; }
+    .form-row input[type=text]:focus, .form-row input[type=number]:focus { outline: 2px solid #3498db; }
+    .radio-group { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 4px; }
+    .radio-group label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 14px; color: #ccc; font-weight: normal; }
+    .radio-group input[type=radio] { accent-color: #3498db; width: 15px; height: 15px; }
+    .field-note { font-size: 12px; color: #666; font-weight: normal; }
+    #submitFormBtn { width: 100%; padding: 13px; background: #3498db; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; margin-top: 6px; }
+    #submitFormBtn:hover { background: #2980b9; }
+    #submitFormBtn:disabled { background: #555; cursor: default; }
+    .privacy-note { font-size: 12px; color: #555; margin-top: 14px; line-height: 1.7; }
 
-    /* 联系表单 */
-    #contactForm {
-      display: none;
-      margin-top: 24px;
-      text-align: left;
-    }
-    #contactForm label { font-size: 15px; color: #aaa; display: block; margin-bottom: 6px; }
-    #contactForm input {
-      width: 100%;
-      padding: 10px 14px;
-      border-radius: 8px;
-      border: 1px solid #444;
-      background: #0d1b2a;
-      color: white;
-      font-size: 16px;
-      margin-bottom: 14px;
-    }
-    #contactForm input:focus { outline: 2px solid #3498db; }
-    #submitContactBtn {
-      width: 100%;
-      padding: 12px;
-      background: #3498db; color: white;
-      border: none; border-radius: 8px;
-      font-size: 16px; cursor: pointer;
-      font-weight: bold;
-    }
-    #submitContactBtn:hover { background: #2980b9; }
-    .privacy-note {
-      font-size: 13px; color: #666;
-      line-height: 1.6;
-      margin-top: 16px;
-      text-align: left;
-    }
+    /* 关闭页 / 无效页 */
+    #closedScreen, #invalidScreen { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #1a1a2e; z-index: 4000; align-items: center; justify-content: center; }
+    #closedScreen.visible, #invalidScreen.visible { display: flex; }
+    .end-box { text-align: center; padding: 40px; max-width: 480px; }
+    .end-box h2 { font-size: 30px; margin-bottom: 16px; }
+    .end-box p { font-size: 17px; color: #aaa; line-height: 1.8; }
 
     /* NASA-TLX */
-    .tlx-item {
-      margin-bottom: 22px;
-      background: #0d1b2a;
-      padding: 14px 18px;
-      border-radius: 8px;
-    }
-    .tlx-item label { font-size: 15px; display: block; margin-bottom: 8px; color: #ccc; }
+    .tlx-item { margin-bottom: 20px; background: #0d1b2a; padding: 14px 18px; border-radius: 8px; }
+    .tlx-item label { font-size: 15px; display: block; margin-bottom: 6px; color: #ccc; }
     .tlx-desc { font-size: 12px; color: #666; margin-bottom: 8px; display: block; }
-    .slider-row {
-      display: flex; align-items: center; gap: 10px;
-    }
-    .slider-row input[type=range] {
-      flex: 1; accent-color: #3498db;
-    }
+    .slider-row { display: flex; align-items: center; gap: 10px; }
+    .slider-row input[type=range] { flex: 1; accent-color: #3498db; }
     .slider-row span { font-size: 12px; color: #888; min-width: 20px; }
     .slider-val { font-size: 13px; color: #f39c12; text-align: right; margin-top: 4px; }
 
     .fixation { font-size: 60px; margin-top: 80px; color: #555; }
-    hr.section { border-color: #2a2a4a; margin: 18px 0; }
+    hr.section { border-color: #2a2a4a; margin: 16px 0; }
   </style>
 </head>
 <body>
@@ -261,28 +115,46 @@
   <button id="startBtn" onclick="startExperiment()">▶ 开始实验</button>
 </div>
 
-<!-- 摄像头小窗 -->
+<!-- 摄像头 -->
 <div id="cameraContainer">
   <video id="camVideo" autoplay muted playsinline></video>
   <div id="camStatus">● 摄像头运行中</div>
 </div>
 
-<!-- 底部按键提示 -->
+<!-- 按键提示 -->
 <div id="keyHint">
   <b>F</b> 不匹配 &nbsp;|&nbsp; <b>J</b> 匹配 &nbsp;|&nbsp; <b>Esc</b> 暂停
 </div>
 
-<!-- 能量环图例 -->
+<!-- 信号环图例 -->
 <div id="ringLegend">
-  <span class="ring-dot" style="background:#2ecc71"></span>绿色：状态良好<br>
-  <span class="ring-dot" style="background:#f39c12"></span>黄色：状态一般<br>
-  <span class="ring-dot" style="background:#e74c3c"></span>红色：状态下降
+  <span class="ring-dot" style="background:#2ecc71"></span>绿色：偏离小，状态稳定<br>
+  <span class="ring-dot" style="background:#f39c12"></span>黄色：偏离中等<br>
+  <span class="ring-dot" style="background:#e74c3c"></span>红色：偏离较大
 </div>
 
 <!-- 暂停遮罩 -->
 <div id="pauseOverlay">
   <h2>⏸ 实验已暂停</h2>
   <p>准备好后，按 <b>空格键</b> 继续</p>
+</div>
+
+<!-- 不活跃警告 -->
+<div id="inactivityWarning">
+  <h3>⚠ 请操作键盘</h3>
+  <p id="inactivityMsg">请按 <b>F</b> 或 <b>J</b> 键作答</p>
+</div>
+
+<!-- 管理员面板 -->
+<div id="adminPanel">
+  <h3>🔧 研究者管理面板</h3>
+  <div class="stat">当前参与人数：<strong id="adminCount">--</strong> / 60</div>
+  <div class="stat">实验状态：<strong id="adminStatus">--</strong></div>
+  <hr class="section">
+  <button class="admin-btn btn-toggle-open" onclick="adminToggle(true)">🟢 开启实验</button>
+  <button class="admin-btn btn-toggle-close" onclick="adminToggle(false)">🔴 关闭实验</button>
+  <br>
+  <button class="admin-btn btn-panel-close" onclick="document.getElementById('adminPanel').style.display='none'">关闭面板</button>
 </div>
 
 <!-- jsPsych 容器 -->
@@ -292,46 +164,104 @@
 <div id="completionScreen">
   <div class="completion-box">
     <h2>🎉 实验已完成！</h2>
-    <p>感谢你认真参与本实验，你的数据已成功记录。</p>
+    <p style="text-align:center;color:#aaa;margin-bottom:4px">感谢你的认真参与，数据已成功记录。</p>
     <hr class="section">
-    <p>如需领取参与奖励，请保存你的<strong>专属码</strong>：</p>
-    <div class="code-display" id="codeDisplay">----</div>
-    <p style="font-size:13px;color:#666">添加微信时请出示此截图以核销奖励</p>
+    <p style="text-align:center;font-size:15px">你的<strong>专属码</strong>（请截图保存）：</p>
+    <div style="text-align:center;margin:8px 0 4px"><div class="code-display" id="codeDisplay">----</div></div>
     <hr class="section">
-    <p style="font-size:16px">请选择你的奖励（可选）：</p>
-    <div class="reward-buttons">
-      <button class="reward-btn btn-cash" onclick="selectReward('cash')">💰 10元红包</button>
-      <button class="reward-btn btn-gift" onclick="selectReward('gift')">🎁 纪念品盲盒</button>
-      <button class="reward-btn btn-none" onclick="selectReward('none')">不需要奖励</button>
-    </div>
-    <p id="rewardConfirm" style="margin-top:14px;color:#2ecc71;display:none;font-size:15px"></p>
+    <div class="form-section">
+      <p style="font-size:15px;margin-bottom:18px;color:#ccc">请填写以下信息后提交，约1分钟。</p>
 
-    <!-- 联系方式表单（选奖励后展开） -->
-    <div id="contactForm">
-      <hr class="section">
-      <p style="font-size:16px;margin-bottom:14px">请填写领奖联系方式：</p>
-      <label>微信号 或 手机号</label>
-      <input type="text" id="contactInput" placeholder="请输入微信号或手机号" />
-      <button id="submitContactBtn" onclick="submitContact()">提交领奖信息</button>
-      <p id="contactConfirm" style="color:#2ecc71;display:none;margin-top:10px;font-size:14px"></p>
+      <div class="form-row">
+        <label>性别</label>
+        <div class="radio-group">
+          <label><input type="radio" name="gender" value="male"> 男</label>
+          <label><input type="radio" name="gender" value="female"> 女</label>
+          <label><input type="radio" name="gender" value="other"> 其他</label>
+          <label><input type="radio" name="gender" value="prefer_not"> 不愿透露</label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label>年龄</label>
+        <input type="number" id="ageInput" min="16" max="80" placeholder="请输入年龄（岁）">
+      </div>
+
+      <div class="form-row">
+        <label>
+          奖励选择
+          <span class="field-note">（奖励将由研究者通过微信联系您发放）</span>
+        </label>
+        <div class="radio-group">
+          <label><input type="radio" name="reward" value="cash"> 💰 10元红包</label>
+          <label><input type="radio" name="reward" value="gift"> 🎁 纪念品盲盒</label>
+          <label><input type="radio" name="reward" value="none"> 不需要奖励</label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label>
+          联系方式（微信号或手机号）
+          <span class="field-note"> — 如不领取奖励可不填</span>
+        </label>
+        <input type="text" id="contactInput" placeholder="请输入微信号或手机号">
+      </div>
+
+      <button id="submitFormBtn" onclick="submitParticipantForm()">提交并完成实验</button>
+      <p id="formConfirm" style="display:none;color:#2ecc71;text-align:center;margin-top:12px;font-size:15px"></p>
       <div class="privacy-note">
-        🔒 我们承诺：联系方式仅用于发放奖励，不会用于其他用途或公开。<br>
-        本实验遵循匿名原则，您的行为数据与个人身份信息不会关联。
+        🔒 隐私说明：联系方式仅用于发放奖励，与行为数据分开存储，不会关联您的身份信息。本实验遵循匿名原则，您可随时退出。
       </div>
     </div>
+  </div>
+</div>
 
-    <p style="font-size:13px;color:#555;margin-top:24px">
-      如不需要奖励，可直接关闭此页面。
-    </p>
+<!-- 实验关闭页 -->
+<div id="closedScreen">
+  <div class="end-box">
+    <h2>🔒 实验招募已结束</h2>
+    <p>参与人数已满额，感谢您的支持与关注！</p>
+  </div>
+</div>
+
+<!-- 数据无效页 -->
+<div id="invalidScreen">
+  <div class="end-box">
+    <h2 style="color:#e74c3c;">⚠ 数据无效</h2>
+    <p>检测到您在任务期间长时间未进行按键操作。<br>根据实验规程，本次数据无法纳入分析。<br><br>感谢您的参与，如有疑问请联系研究者。</p>
   </div>
 </div>
 
 <script>
 // ============================================================
-// 0. 随机分配 D1/D2 真伪反馈（页面加载时决定）
+// ★ 配置区 — 上线前必填
+// ============================================================
+// EmailJS 配置：
+//   1. 去 emailjs.com 注册，创建 Gmail service（先修复 412 scope 问题）
+//   2. 创建模板，模板正文中放 {{message}}，主题可用 {{subject}}
+//   3. 将 Public Key / Service ID / Template ID 填入下方
+const EMAILJS_PUBLIC_KEY  = 'YOUR_PUBLIC_KEY';   // Account → API Keys → Public Key
+const EMAILJS_SERVICE_ID  = 'YOUR_SERVICE_ID';   // Email Services 页面的 Service ID
+const EMAILJS_TEMPLATE_ID = 'YOUR_TEMPLATE_ID';  // Email Templates 页面的 Template ID
+
+// JSONBin 参与人数统计（可选，不填则跳过）：
+//   1. 注册 jsonbin.io (免费)
+//   2. 创建 Bin，初始内容：{"count":0,"open":true}
+//   3. 复制 Bin ID 和 Master Key 填入下方
+const JSONBIN_BIN_ID  = '';  // 示例: '64a1b2c3d4e5f6a7b8c9d0e1'
+const JSONBIN_API_KEY = '';  // 示例: '$2a$10$...'
+
+const MAX_PARTICIPANTS    = 60;
+const RESEARCHER_PASSWORD = '0515lhy';  // \ 键触发研究者绕过
+const ADMIN_PASSWORD      = 'admin2024'; // Ctrl+\ 触发管理面板
+
+// ============================================================
+// 0. 随机分配
 // ============================================================
 const D1_IS_TRUE = Math.random() < 0.5;
 const D2_IS_TRUE = !D1_IS_TRUE;
+// Block A/B/C 顺序被试间随机，平衡顺序效应
+const BLOCK_ABC_ORDER = ['A','B','C'].sort(() => Math.random() - 0.5);
 
 // ============================================================
 // 1. 全局状态
@@ -340,18 +270,20 @@ const state = {
   cameraReady: false,
   video: null,
 
-  // 眨眼
+  // 眨眼（原始 + EMA 平滑）
   EAR_THRESHOLD: 0.21,
   EAR_CONSEC: 2,
   earBelowCount: 0,
   blinkTimestamps: [],
   blinkRate: 0,
+  emaBlinkRate: null,
 
-  // 头部姿态
+  // 头部姿态（原始 + EMA 平滑）
   headYaw: 0,
   headPitch: 0,
+  emaHead: null,
 
-  // 键盘节律
+  // 按键节律（滑动窗口，内在平滑）
   rtHistory: [],
   rtCV: 0,
 
@@ -360,54 +292,52 @@ const state = {
   fakeEnergy: 50,
   currentBlock: 'none',
 
-  // 基线统计（漂移窗口后由 computeBaseline() 填充）
+  // 基线
   baseline: null,
+  driftBeta:      { blink: 0, head: 0, rtCV: 0 },
+  driftIntercept: { blink: 15, head: 0.1, rtCV: 0.25 },
+  driftEndTime:   null,
+  naturalBeta:    { blink: 0, head: 0, rtCV: 0 },
 
-  // OLS 回归结果：自然漂移斜率 β 和截距 Ŝ_baseline（computeBaseline() 填充）
-  // 论文说明：β 单位为「信号变化量/秒」，截距为漂移窗口回归直线在 t=0 的估计值
-  driftBeta:      { blink: 0, head: 0, rtCV: 0 },   // 自然漂移斜率
-  driftIntercept: { blink: 15, head: 0.1, rtCV: 0.25 }, // 截距 Ŝ_baseline
-  driftEndTime:   null,   // computeBaseline() 调用时刻（漂移修正 t=0 基准）
-
-  // 信号方向系数（computeDirectionCoeff() 在 A/B/C 各自结束后填充）
-  // +1 = 信号高→认知状态好，-1 = 信号高→状态差；默认 -1（保守假设）
+  // 方向 & 权重
   directionBlink: -1,
   directionHead:  -1,
   directionRT:    -1,
-  directionLog:   [],   // [{ block, signal, r }]，供 buildEmailBody 读取
-
-  // ── 自然回归系数 β（漂移窗口 WLS 估计，无反馈条件）
-  // 论文说明：β 在模型 S_{t+1}=S_t-β·ΔS_t 中量化系统内在调节强度，
-  //   由漂移窗口相邻 trial 间的 z 分变化与偏差的比值 WLS 聚合得到
-  naturalBeta: { blink: 0, head: 0, rtCV: 0 },
-
-  // ── 逐 trial γ̂ 计算所需的前一时刻信号值
-  prevZ: { blink: null, head: null, rtCV: null },
-  prevFusedS: null,
-
-  // ── 逐 trial γ̂ 日志（分信号存储，供 WLS 聚合用）
-  // entries: [{ gammaHat, weight }]，weight = |ΔSₜ|
-  gammaLog: { blink: [], head: [], rtCV: [], d: [] },
-
-  // ── WLS 聚合后的各信号反馈增益 γ̄
-  // 论文说明：γ̄_k = 单信号 k 在 Block A/B/C 中驱动状态回归的平均增益；
-  //   γ̄_D = Block D 真反馈融合信号的综合反馈增益（核心因变量之一）
-  gammaBar: { blink: 0, head: 0, rtCV: 0, d: 0 },
-
-  // ── 归一化权重 w1-w3（正比于 |γ̄_k|，反映各信号反馈贡献）
-  // 论文说明：权重由单信号反馈阶段实测的增益幅度决定，
-  //   反馈驱动效果越强的信号在 Block D 融合时占比越高
   weights: { blink: 0.333, head: 0.333, rtCV: 0.334 },
+
+  // γ 计算
+  prevZ:      { blink: null, head: null, rtCV: null },
+  prevFusedS: null,
+  gammaLog:   { blink: [], head: [], rtCV: [], d: [] },
+  gammaBar:   { blink: 0, head: 0, rtCV: 0, d: 0 },
 
   // 暂停
   paused: false,
   pauseLog: [],
   pauseStart: null,
 
+  // 不活跃检测
+  inactivityActive: false,
+  inactivityTimer: null,
+  warningCount: 0,
+  MAX_WARNINGS: 2,
+  experimentInvalidated: false,
+
+  // 研究者模式
+  researcherBypass: false,
+  isTestMode: false,
+
   // 完成
   completionCode: null,
-  rewardChoice: null,
+  participantInfo: {},
 };
+
+// EMA 平滑系数
+// 论文说明：为降低信号噪声，眨眼频率采用 α=0.3 的 EMA（较慢信号，需较强平滑），
+//   头部运动量采用 α=0.4 的 EMA（响应更快，保留更多即时变化）。
+//   公式：ŝₜ = α·sₜ + (1−α)·ŝₜ₋₁。RT-CV 基于20试次滑动窗口计算，内在已平滑。
+const EMA_ALPHA_BLINK = 0.3;
+const EMA_ALPHA_HEAD  = 0.4;
 
 // ============================================================
 // 2. 工具函数
@@ -417,145 +347,48 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function generateCode() {
   const n = Math.floor(1000 + Math.random() * 9000);
   const alpha = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const l = alpha[Math.floor(Math.random() * alpha.length)];
-  return `NB-${n}-${l}`;
+  return `NB-${n}-${alpha[Math.floor(Math.random() * alpha.length)]}`;
 }
 
-function arrMean(arr) {
-  if (!arr.length) return 0;
-  return arr.reduce((a, b) => a + b, 0) / arr.length;
-}
+function arrMean(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
 function arrStd(arr) {
   if (arr.length < 2) return 1;
   const m = arrMean(arr);
-  return Math.sqrt(arr.map(x => (x - m) ** 2).reduce((a, b) => a + b, 0) / arr.length);
+  return Math.sqrt(arr.map(x=>(x-m)**2).reduce((a,b)=>a+b,0)/arr.length);
 }
 
-// 普通最小二乘线性回归
-// xs: 自变量数组（此处为 trial 序号），ys: 因变量数组（信号值）
-// 返回 { beta: 斜率/trial, intercept: y截距 }
-// 论文说明：β 估计漂移窗口内信号的自然线性趋势，
-// 用于在 Block D 中从当前信号中减去预期自然漂移，
-// 从而隔离出反馈干预效应。
 function linearRegression(xs, ys) {
-  const n = xs.length;
-  if (n < 3) return { beta: 0, intercept: arrMean(ys) };
-  const mx = arrMean(xs), my = arrMean(ys);
-  const ssxy = xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0);
-  const ssxx = xs.reduce((s, x)    => s + (x - mx) ** 2, 0);
-  const beta = ssxx > 0 ? ssxy / ssxx : 0;
-  return { beta, intercept: my - beta * mx };
+  if (xs.length < 2) return { beta:0, intercept:arrMean(ys) };
+  const xm=arrMean(xs), ym=arrMean(ys);
+  let num=0, den=0;
+  for (let i=0;i<xs.length;i++) { num+=(xs[i]-xm)*(ys[i]-ym); den+=(xs[i]-xm)**2; }
+  const beta = den>1e-9 ? num/den : 0;
+  return { beta, intercept: ym-beta*xm };
 }
 
-// Pearson 积差相关系数
-// 用于 Block A/B/C 中计算各信号与逐试次正确率的相关方向
-function pearsonR(xs, ys) {
-  const n = xs.length;
-  if (n < 3) return 0;
-  const mx = arrMean(xs), my = arrMean(ys);
-  const num = xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0);
-  const dx  = Math.sqrt(xs.reduce((s, x) => s + (x - mx) ** 2, 0));
-  const dy  = Math.sqrt(ys.reduce((s, y) => s + (y - my) ** 2, 0));
-  return (dx * dy) > 1e-9 ? num / (dx * dy) : 0;
-}
-
-// ── WLS 聚合 γ̂ 数组 → γ̄ ────────────────────────────────────
-// entries: [{gammaHat, weight}]，weight = |ΔSₜ|
-// 论文说明：因 γ̂ 在 ΔSₜ→0 时方差发散（异方差），采用 WLS 以 |ΔSₜ| 为权重，
-//   使状态偏差较大（估计更可靠）的 trial 贡献更多权重。
-//   参考：Carroll & Ruppert (1988) Transformation and Weighting in Regression.
 function computeWLSGamma(entries) {
-  const valid = entries.filter(e => e.weight > 0.05);
+  const valid = entries.filter(e=>isFinite(e.gammaHat)&&e.weight>0.05);
   if (valid.length < 3) return 0;
-  const num = valid.reduce((s, e) => s + e.weight * e.gammaHat, 0);
-  const den = valid.reduce((s, e) => s + e.weight, 0);
-  return den > 1e-9 ? num / den : 0;
-}
-
-// ── 单信号 z 分（β_k=0 假设：信号视为稳定，只做均值归一化）
-// 论文说明：本研究假设三个生理/行为信号在无干预条件下不存在系统性时间漂移
-//   （即 β_k=0），因此信号偏差直接以均值为基线计算 z 分，
-//   不应用时间校正项（intercept + β·t）。
-//   naturalBeta 字段仍会从漂移窗口估计（用于邮件报告和理论参考），
-//   但不纳入信号 γ̂ 的计算公式。
-function getSingleZ(key) {
-  if (!state.baseline) return 0;
-  const b = state.baseline;
-  if (key === 'blink') return (state.blinkRate - b.blinkMean) / b.blinkStd;
-  if (key === 'head') {
-    const h = Math.abs(state.headYaw) + Math.abs(state.headPitch);
-    return (h - b.headMean) / b.headStd;
-  }
-  if (key === 'rtCV') {
-    if (state.rtHistory.length < 5) return 0;
-    return (state.rtCV - b.rtCVMean) / b.rtCVStd;
-  }
-  return 0;
-}
-
-// ── 三信号加权定向融合 Sₜ（Block D 用）──────────────────────
-// Sₜ = Σ wₖ × (−directionK × zₖ)，正值=认知状态好，负值=状态差
-// 论文说明：direction=1 表示"信号↑=状态差"（默认），
-//   此时 -direction × z = -z，当 z>0（信号高→状态差）时 Sₜ<0 正确表示差状态。
-//   direction=-1 表示"信号↑=状态好"（Block A/B/C 验证后翻转），
-//   此时 -direction × z = +z，当 z>0（信号高→状态好）时 Sₜ>0 正确。
-function getFusedS() {
-  if (!state.baseline) return 0;
-  const w = state.weights;
-  const sB = -state.directionBlink * getSingleZ('blink');
-  const sH = -state.directionHead  * getSingleZ('head');
-  const sR = state.rtHistory.length >= 5 ? -state.directionRT * getSingleZ('rtCV') : 0;
-  const wR = state.rtHistory.length >= 5 ? w.rtCV : 0;
-  const wTotal = w.blink + w.head + wR;
-  if (wTotal < 1e-6) return 0;
-  return (w.blink * sB + w.head * sH + wR * sR) / wTotal;
-}
-
-// ── 归一化权重计算 + 方向系数更新（三个 Block 全完成后调用）────
-// 方向：sign(γ̄_k) > 0 → 默认方向（信号↑=状态差）有效，保持 direction=1
-//        sign(γ̄_k) ≤ 0 → 默认方向无效或逆向，翻转为 direction=-1
-// 权重 ∝ |γ̄_k|（贡献越大权重越高），全零时退回等权重
-// 论文说明：权重由单信号闭环反馈的实测增益幅度 |γ̄_k| 决定，
-//   方向由 sign(γ̄_k) 决定而非先验假设，两者均由 Block A/B/C 实测得出。
-function computeAndUpdateWeights() {
-  const gB = state.gammaBar.blink;
-  const gH = state.gammaBar.head;
-  const gR = state.gammaBar.rtCV;
-
-  // 方向系数（direction=1：保持默认，信号↑=状态差；-1：翻转）
-  state.directionBlink = gB > 0 ? 1 : -1;
-  state.directionHead  = gH > 0 ? 1 : -1;
-  state.directionRT    = gR > 0 ? 1 : -1;
-
-  // 归一化权重
-  const total = Math.abs(gB) + Math.abs(gH) + Math.abs(gR);
-  if (total < 1e-6) {
-    state.weights = { blink: 0.333, head: 0.333, rtCV: 0.334 };
-  } else {
-    state.weights = { blink: Math.abs(gB)/total, head: Math.abs(gH)/total, rtCV: Math.abs(gR)/total };
-  }
-  console.log('γ̄ 汇总:', { blink: gB?.toFixed(3), head: gH?.toFixed(3), rtCV: gR?.toFixed(3) });
-  console.log('方向系数:', { blink: state.directionBlink, head: state.directionHead, rt: state.directionRT });
-  console.log('归一化权重 w1-w3:', state.weights);
+  const wg = valid.reduce((s,e)=>s+e.weight*e.gammaHat,0);
+  const w  = valid.reduce((s,e)=>s+e.weight,0);
+  return w>1e-9 ? wg/w : 0;
 }
 
 function calcEAR(pts) {
-  const A = Math.hypot(pts[1].x - pts[5].x, pts[1].y - pts[5].y);
-  const B = Math.hypot(pts[2].x - pts[4].x, pts[2].y - pts[4].y);
-  const C = Math.hypot(pts[0].x - pts[3].x, pts[0].y - pts[3].y);
-  return C < 1 ? 1 : (A + B) / (2 * C);
+  const A=Math.hypot(pts[1].x-pts[5].x,pts[1].y-pts[5].y);
+  const B=Math.hypot(pts[2].x-pts[4].x,pts[2].y-pts[4].y);
+  const C=Math.hypot(pts[0].x-pts[3].x,pts[0].y-pts[3].y);
+  return C<1 ? 1 : (A+B)/(2*C);
 }
 
 // ============================================================
-// 3. 摄像头初始化
+// 3. 摄像头
 // ============================================================
 async function initCamera() {
   const video = document.getElementById('camVideo');
   state.video = video;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 320, height: 240, facingMode: 'user' }
-    });
+    const stream = await navigator.mediaDevices.getUserMedia({ video:{width:320,height:240,facingMode:'user'} });
     video.srcObject = stream;
     await new Promise(res => { video.onloadedmetadata = res; });
     state.cameraReady = true;
@@ -563,7 +396,7 @@ async function initCamera() {
     startDetectionLoop();
     return true;
   } catch(e) {
-    console.warn('摄像头初始化失败:', e);
+    console.warn('摄像头不可用:', e);
     document.getElementById('camStatus').textContent = '⚠ 摄像头不可用';
     return false;
   }
@@ -574,312 +407,556 @@ async function initCamera() {
 // ============================================================
 function startDetectionLoop() {
   async function detect() {
-    if (!state.cameraReady || state.paused) {
-      requestAnimationFrame(detect); return;
-    }
+    if (!state.cameraReady || state.paused) { requestAnimationFrame(detect); return; }
     try {
       const det = await faceapi
-        .detectSingleFace(state.video,
-          new faceapi.TinyFaceDetectorOptions({ inputSize: 160 }))
+        .detectSingleFace(state.video, new faceapi.TinyFaceDetectorOptions({inputSize:160}))
         .withFaceLandmarks();
-
       if (det) {
         const lm = det.landmarks.positions;
-
-        // 眨眼 EAR
-        const leftEye  = [lm[36],lm[37],lm[38],lm[39],lm[40],lm[41]];
-        const rightEye = [lm[42],lm[43],lm[44],lm[45],lm[46],lm[47]];
-        const ear = (calcEAR(leftEye) + calcEAR(rightEye)) / 2;
+        const ear = (calcEAR([lm[36],lm[37],lm[38],lm[39],lm[40],lm[41]]) +
+                     calcEAR([lm[42],lm[43],lm[44],lm[45],lm[46],lm[47]])) / 2;
         if (ear < state.EAR_THRESHOLD) {
           state.earBelowCount++;
         } else {
-          if (state.earBelowCount >= state.EAR_CONSEC) {
-            state.blinkTimestamps.push(Date.now());
-          }
+          if (state.earBelowCount >= state.EAR_CONSEC) state.blinkTimestamps.push(Date.now());
           state.earBelowCount = 0;
         }
         const now = Date.now();
-        state.blinkTimestamps = state.blinkTimestamps.filter(t => now - t < 60000);
+        state.blinkTimestamps = state.blinkTimestamps.filter(t=>now-t<60000);
         state.blinkRate = state.blinkTimestamps.length;
-
-        // 头部姿态
-        const nose = lm[30];
-        const lOuter = lm[36], rOuter = lm[45];
-        const cx = (lOuter.x + rOuter.x) / 2;
-        const cy = (lOuter.y + rOuter.y) / 2;
-        const fw = Math.abs(rOuter.x - lOuter.x);
-        const fh = det.detection.box.height;
-        state.headYaw   = fw > 5 ? (nose.x - cx) / (fw / 2) : 0;
-        state.headPitch = fh > 5 ? (nose.y - cy) / (fh / 2) : 0;
+        const nose=lm[30], lO=lm[36], rO=lm[45];
+        const fw=Math.abs(rO.x-lO.x), fh=det.detection.box.height;
+        state.headYaw   = fw>5 ? (nose.x-(lO.x+rO.x)/2)/(fw/2) : 0;
+        state.headPitch = fh>5 ? (nose.y-(lO.y+rO.y)/2)/(fh/2) : 0;
       }
-    } catch(e) { /* 跳过异常帧 */ }
-
+    } catch(e) {}
+    updateEMA();
     updateEnergy();
     requestAnimationFrame(detect);
   }
   detect();
 }
 
+function updateEMA() {
+  const rawBlink = state.blinkRate;
+  const rawHead  = Math.abs(state.headYaw)+Math.abs(state.headPitch);
+  if (state.emaBlinkRate === null) {
+    state.emaBlinkRate = rawBlink;
+    state.emaHead      = rawHead;
+  } else {
+    state.emaBlinkRate = EMA_ALPHA_BLINK*rawBlink + (1-EMA_ALPHA_BLINK)*state.emaBlinkRate;
+    state.emaHead      = EMA_ALPHA_HEAD *rawHead  + (1-EMA_ALPHA_HEAD) *state.emaHead;
+  }
+}
+
 // ============================================================
 // 5. 基线计算（漂移窗口结束后调用）
-// ── 同时计算：
-//   · 各信号的均值 / SD（用于 z 分归一化）
-//   · OLS 线性回归 β 和截距（自然漂移系数，用于 Block D 漂移修正）
-//     论文说明：β 为漂移窗口内信号对时间的最小二乘斜率；
-//     Ŝ_baseline（截距）为回归直线在窗口起点 t=0 的估计值。
 // ============================================================
 function computeBaseline() {
   const driftTrials = jsPsych.data.get()
-    .filter({ phase: '漂移窗口' })
-    .values()
-    .filter(d => d.blink_rate !== undefined && d.trial_type_custom === 'stimulus');
-
+    .filter({ phase:'漂移窗口', trial_type_custom:'stimulus' })
+    .values().filter(d=>d.ema_blink!==undefined&&d.ema_blink!==null);
   state.driftEndTime = Date.now();
 
   if (driftTrials.length < 5) {
-    state.baseline = {
-      blinkMean: 15, blinkStd: 3,
-      headMean: 0.1, headStd: 0.05,
-      rtCVMean: 0.25, rtCVStd: 0.08,
-    };
-    // β 使用零值（无漂移假设）
-    state.driftBeta      = { blink: 0, head: 0, rtCV: 0 };
-    state.driftIntercept = { blink: 15, head: 0.1, rtCV: 0.25 };
+    state.baseline = { blinkMean:15,blinkStd:3,headMean:0.1,headStd:0.05,rtCVMean:0.25,rtCVStd:0.08 };
+    state.driftBeta = {blink:0,head:0,rtCV:0};
+    state.driftIntercept = {blink:15,head:0.1,rtCV:0.25};
+    state.naturalBeta = {blink:0,head:0,rtCV:0};
     console.warn('基线数据不足，使用默认值');
     return;
   }
 
-  // 时间轴：用 time_elapsed（ms → 秒），以第一条试次为 t=0
-  const t0 = driftTrials[0].time_elapsed / 1000;
-  const xs = driftTrials.map(d => d.time_elapsed / 1000 - t0);
+  const t0   = driftTrials[0].time_elapsed/1000;
+  const xs   = driftTrials.map(d=>d.time_elapsed/1000-t0);
+  const bArr = driftTrials.map(d=>d.ema_blink);
+  const hArr = driftTrials.map(d=>d.ema_head);
+  const rArr = driftTrials.filter(d=>d.rt_cv>0).map(d=>d.rt_cv);
+  const rXs  = driftTrials.filter(d=>d.rt_cv>0).map(d=>d.time_elapsed/1000-t0);
 
-  const blinkArr = driftTrials.map(d => d.blink_rate);
-  const headArr  = driftTrials.map(d => Math.abs(d.head_yaw) + Math.abs(d.head_pitch));
-  const rtArr    = driftTrials.filter(d => d.rt_cv > 0).map(d => d.rt_cv);
-  const rtXs     = driftTrials.filter(d => d.rt_cv > 0).map(d => d.time_elapsed / 1000 - t0);
-
-  // 均值 / SD（用于 z 分）
   state.baseline = {
-    blinkMean: arrMean(blinkArr),
-    blinkStd:  Math.max(arrStd(blinkArr), 0.5),
-    headMean:  arrMean(headArr),
-    headStd:   Math.max(arrStd(headArr), 0.01),
-    rtCVMean:  rtArr.length ? arrMean(rtArr) : 0.25,
-    rtCVStd:   rtArr.length ? Math.max(arrStd(rtArr), 0.01) : 0.08,
+    blinkMean: arrMean(bArr), blinkStd: Math.max(arrStd(bArr),0.5),
+    headMean:  arrMean(hArr), headStd:  Math.max(arrStd(hArr),0.01),
+    rtCVMean:  rArr.length ? arrMean(rArr) : 0.25,
+    rtCVStd:   rArr.length ? Math.max(arrStd(rArr),0.01) : 0.08,
   };
 
-  // OLS 线性回归 → β（自然漂移斜率）和截距（Ŝ_baseline）
-  const blinkReg = linearRegression(xs, blinkArr);
-  const headReg  = linearRegression(xs, headArr);
-  const rtReg    = rtArr.length >= 5
-    ? linearRegression(rtXs, rtArr)
-    : { beta: 0, intercept: state.baseline.rtCVMean };
+  const bReg = linearRegression(xs,bArr);
+  const hReg = linearRegression(xs,hArr);
+  const rReg = rArr.length>=5 ? linearRegression(rXs,rArr) : {beta:0,intercept:state.baseline.rtCVMean};
+  state.driftBeta      = {blink:bReg.beta,head:hReg.beta,rtCV:rReg.beta};
+  state.driftIntercept = {blink:bReg.intercept,head:hReg.intercept,rtCV:rReg.intercept};
 
-  state.driftBeta      = { blink: blinkReg.beta,      head: headReg.beta,      rtCV: rtReg.beta };
-  state.driftIntercept = { blink: blinkReg.intercept, head: headReg.intercept, rtCV: rtReg.intercept };
-
-  // ── 自然回归系数 β（无反馈条件 WLS 估计）
-  // 各信号先转为简单 z 分（(值-均值)/SD），基线=0，
-  // 相邻 trial 对：β̂ₜ = -(zₜ₊₁-zₜ)/zₜ；WLS 以 |zₜ| 为权重
-  const toZ = (arr, mean, std) => arr.map(v => (v - mean) / std);
+  // 自然回归系数 β（WLS，漂移窗口无反馈估计）
+  const toZ = (arr,m,s) => arr.map(v=>(v-m)/s);
   const wlsBeta = zs => {
-    const entries = [];
-    for (let i = 0; i < zs.length - 1; i++) {
-      if (Math.abs(zs[i]) < 0.1) continue;
-      entries.push({ gammaHat: -(zs[i+1] - zs[i]) / zs[i], weight: Math.abs(zs[i]) });
+    const ents=[];
+    for (let i=0;i<zs.length-1;i++) {
+      if (Math.abs(zs[i])<0.1) continue;
+      ents.push({gammaHat:-(zs[i+1]-zs[i])/zs[i], weight:Math.abs(zs[i])});
     }
-    return computeWLSGamma(entries);
+    return computeWLSGamma(ents);
   };
-  const blinkZs = toZ(blinkArr, state.baseline.blinkMean, state.baseline.blinkStd);
-  const headZs  = toZ(headArr,  state.baseline.headMean,  state.baseline.headStd);
-  const rtZs    = rtArr.length >= 5
-    ? toZ(rtArr, state.baseline.rtCVMean, state.baseline.rtCVStd) : [];
-
+  const bZs = toZ(bArr,state.baseline.blinkMean,state.baseline.blinkStd);
+  const hZs = toZ(hArr,state.baseline.headMean, state.baseline.headStd);
+  const rZs = rArr.length>=5 ? toZ(rArr,state.baseline.rtCVMean,state.baseline.rtCVStd) : [];
   state.naturalBeta = {
-    blink: wlsBeta(blinkZs),
-    head:  wlsBeta(headZs),
-    rtCV:  rtZs.length >= 4 ? wlsBeta(rtZs) : 0,
+    blink: wlsBeta(bZs),
+    head:  wlsBeta(hZs),
+    rtCV:  rZs.length>=4 ? wlsBeta(rZs) : 0,
   };
-
-  console.log('基线计算完成:', state.baseline);
-  console.log('漂移回归 β（时间趋势）:', state.driftBeta);
-  console.log('截距 Ŝ_baseline:', state.driftIntercept);
-  console.log('自然回归系数 β（控制模型）:', state.naturalBeta);
+  console.log('基线:', state.baseline, '| β:', state.naturalBeta);
 }
 
 // ============================================================
-// 6. 能量计算
+// 6. 信号 z 分（使用 EMA 平滑值，β_k=0 假设）
 // ============================================================
-
-// ── Block A/B/C：中性幅度（|ΔSₜ|）→ 颜色 ────────────────────
-// 论文说明：A/B/C 阶段色环仅显示信号偏离基线的幅度（无方向），
-//   绿色=贴近基线（信号稳定），红色=远离基线（信号波动大）。
-//   颜色不暗示"好"或"坏"，避免在方向性验证完成前引入需求特征。
-function computeNeutralEnergy(z) {
-  return clamp(50 - Math.abs(z) * 18, 5, 95);
+function getSingleZ(key) {
+  if (!state.baseline) return 0;
+  const b = state.baseline;
+  if (key==='blink') {
+    const v = state.emaBlinkRate!==null ? state.emaBlinkRate : state.blinkRate;
+    return (v-b.blinkMean)/b.blinkStd;
+  }
+  if (key==='head') {
+    const v = state.emaHead!==null ? state.emaHead : (Math.abs(state.headYaw)+Math.abs(state.headPitch));
+    return (v-b.headMean)/b.headStd;
+  }
+  if (key==='rtCV') {
+    if (state.rtHistory.length<5) return 0;
+    return (state.rtCV-b.rtCVMean)/b.rtCVStd;
+  }
+  return 0;
 }
 
-// ── Block D 真反馈：加权定向融合 Sₜ → ΔSₜ → 颜色 ───────────
-// ΔSₜ = Sₜ（因为融合后基线=0）；正值→好状态→绿，负值→差状态→红
-// 映射：energy = 50 + Sₜ × 20，clamp 到 0-100
-function fusedEnergy() {
-  const s = getFusedS();
-  return clamp(50 + s * 20, 0, 100);
+function getFusedS() {
+  if (!state.baseline) return 0;
+  const w = state.weights;
+  const hasRT = state.rtHistory.length>=5;
+  const sB = -state.directionBlink * getSingleZ('blink');
+  const sH = -state.directionHead  * getSingleZ('head');
+  const sR = hasRT ? -state.directionRT * getSingleZ('rtCV') : 0;
+  const wT = w.blink + w.head + (hasRT ? w.rtCV : 0);
+  return wT<1e-6 ? 0 : (w.blink*sB + w.head*sH + (hasRT?w.rtCV*sR:0))/wT;
 }
 
-// ── 单信号能量（A/B/C 中立显示）────────────────────────────
-function singleSignalEnergy(key) {
-  if (!state.baseline) return 50;
-  return computeNeutralEnergy(getSingleZ(key));
+function computeAndUpdateWeights() {
+  const gB=state.gammaBar.blink, gH=state.gammaBar.head, gR=state.gammaBar.rtCV;
+  state.directionBlink = gB>0 ? 1 : -1;
+  state.directionHead  = gH>0 ? 1 : -1;
+  state.directionRT    = gR>0 ? 1 : -1;
+  const total = Math.abs(gB)+Math.abs(gH)+Math.abs(gR);
+  state.weights = total<1e-6
+    ? {blink:0.333,head:0.333,rtCV:0.334}
+    : {blink:Math.abs(gB)/total, head:Math.abs(gH)/total, rtCV:Math.abs(gR)/total};
+  console.log('方向 d:', {b:state.directionBlink,h:state.directionHead,r:state.directionRT});
+  console.log('权重 w:', state.weights);
 }
 
+// ============================================================
+// 7. 能量计算
+// ============================================================
+function computeNeutralEnergy(key) {
+  return clamp(50 - Math.abs(getSingleZ(key))*18, 5, 95);
+}
+function fusedEnergy() { return clamp(50 + getFusedS()*20, 0, 100); }
 function computeFakeEnergy() {
-  state.fakeEnergy += (Math.random() - 0.48) * 4;
-  state.fakeEnergy = clamp(state.fakeEnergy, 20, 80);
+  state.fakeEnergy += (Math.random()-0.48)*4;
+  state.fakeEnergy  = clamp(state.fakeEnergy,20,80);
   return state.fakeEnergy;
 }
-
 function computeEnergy() {
   const b = state.currentBlock;
-  if (b === 'Block_A')  return singleSignalEnergy('blink');
-  if (b === 'Block_B')  return singleSignalEnergy('head');
-  if (b === 'Block_C')  return singleSignalEnergy('rtCV');
-  if (b === 'Block_D1') return D1_IS_TRUE ? fusedEnergy() : computeFakeEnergy();
-  if (b === 'Block_D2') return D2_IS_TRUE ? fusedEnergy() : computeFakeEnergy();
+  if (b==='Block_A') return computeNeutralEnergy('blink');
+  if (b==='Block_B') return computeNeutralEnergy('head');
+  if (b==='Block_C') return computeNeutralEnergy('rtCV');
+  if (b==='Block_D1') return D1_IS_TRUE ? fusedEnergy() : computeFakeEnergy();
+  if (b==='Block_D2') return D2_IS_TRUE ? fusedEnergy() : computeFakeEnergy();
   return 50;
 }
-
 function updateEnergy() {
   state.energyLevel = computeEnergy();
   const ring = document.getElementById('energyRing');
   if (!ring) return;
-  if (state.energyLevel < 35)      ring.style.borderColor = '#e74c3c';
-  else if (state.energyLevel < 65) ring.style.borderColor = '#f39c12';
-  else                              ring.style.borderColor = '#2ecc71';
+  ring.style.borderColor = state.energyLevel<35 ? '#e74c3c' : state.energyLevel<65 ? '#f39c12' : '#2ecc71';
 }
 
-// ── Block A/B/C 结束后：聚合单信号 γ̄，存入 gammaBar ────────
-// 论文说明：此处不再使用 Pearson r 判断方向；
-//   方向 d_k = sign(γ̄_k)，即"反馈在默认方向下是否驱动了状态回归"。
-//   γ̄_k > 0 表示反馈有效（信号向基线回归），保持默认方向（信号↑=状态差）；
-//   γ̄_k ≤ 0 表示反馈无效或逆向，Block D 中翻转该信号方向。
-//   方向和权重统一在 computeAndUpdateWeights() 中整合。
+// ============================================================
+// 8. 方向系数聚合（Block A/B/C 结束后）
+// ============================================================
 function computeDirectionCoeff(blockName) {
-  const keyMap = { Block_A: 'blink', Block_B: 'head', Block_C: 'rtCV' };
+  const keyMap = {Block_A:'blink',Block_B:'head',Block_C:'rtCV'};
   const key = keyMap[blockName];
   if (!key) return;
-
-  const entries = state.gammaLog[key];
-  const gammaBar = computeWLSGamma(entries);
-
-  if (blockName === 'Block_A') state.gammaBar.blink = gammaBar;
-  if (blockName === 'Block_B') state.gammaBar.head  = gammaBar;
-  if (blockName === 'Block_C') state.gammaBar.rtCV  = gammaBar;
-
-  console.log(`γ̄ 聚合 ${blockName} [${key}]: γ̄=${gammaBar.toFixed(3)}, n=${entries.length}个有效对`);
+  const gBar = computeWLSGamma(state.gammaLog[key]);
+  state.gammaBar[key] = gBar;
+  console.log(`γ̄ ${blockName}: ${gBar.toFixed(3)}, n=${state.gammaLog[key].length}`);
 }
 
 // ============================================================
-// 7. 键盘节律更新
+// 9. RT 更新
 // ============================================================
 function updateRTHistory(rt) {
-  if (rt == null || rt <= 0) return;
+  if (!rt||rt<=0) return;
   state.rtHistory.push(rt);
-  if (state.rtHistory.length > 20) state.rtHistory.shift();
-  if (state.rtHistory.length >= 5) {
+  if (state.rtHistory.length>20) state.rtHistory.shift();
+  if (state.rtHistory.length>=5) {
     const m = arrMean(state.rtHistory);
-    state.rtCV = m > 0 ? arrStd(state.rtHistory) / m : 0;
+    state.rtCV = m>0 ? arrStd(state.rtHistory)/m : 0;
   }
 }
 
 // ============================================================
-// 8. 暂停机制
+// 10. 不活跃检测（3秒无按键 → 警告；累计3次 → 无效）
+// ============================================================
+function startInactivityTimer() {
+  clearInactivityTimer();
+  if (!state.inactivityActive||state.paused||state.researcherBypass) return;
+  state.inactivityTimer = setTimeout(() => {
+    state.warningCount++;
+    if (state.warningCount > state.MAX_WARNINGS) {
+      showInvalidData();
+    } else {
+      const warn = document.getElementById('inactivityWarning');
+      document.getElementById('inactivityMsg').innerHTML =
+        `（第 <strong>${state.warningCount}</strong> / ${state.MAX_WARNINGS} 次提醒）请按 <b>F</b> 或 <b>J</b> 键作答`;
+      warn.style.display = 'block';
+      setTimeout(() => { warn.style.display = 'none'; }, 2000);
+      startInactivityTimer();
+    }
+  }, 3000);
+}
+function clearInactivityTimer() {
+  if (state.inactivityTimer) { clearTimeout(state.inactivityTimer); state.inactivityTimer=null; }
+}
+function resetInactivityTimer() {
+  if (!state.inactivityActive) return;
+  clearInactivityTimer();
+  startInactivityTimer();
+}
+function showInvalidData() {
+  state.experimentInvalidated = true;
+  state.inactivityActive = false;
+  clearInactivityTimer();
+  try { jsPsych.endExperiment(); } catch(e) {}
+  document.getElementById('jspsych-target').style.display = 'none';
+  document.getElementById('keyHint').style.display = 'none';
+  document.getElementById('ringLegend').style.display = 'none';
+  document.getElementById('cameraContainer').style.display = 'none';
+  document.getElementById('invalidScreen').classList.add('visible');
+}
+
+// ============================================================
+// 11. 键盘事件：暂停、不活跃重置、研究者绕过、管理面板
 // ============================================================
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !state.paused) {
+  if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+
+  // 任意按键：重置不活跃计时器
+  if (state.inactivityActive && !state.paused) resetInactivityTimer();
+
+  // Esc：暂停
+  if (e.key==='Escape' && !state.paused && !state.researcherBypass) {
     state.paused = true;
     state.pauseStart = Date.now();
     document.getElementById('pauseOverlay').classList.add('visible');
     document.getElementById('keyHint').style.display = 'none';
     document.getElementById('ringLegend').style.display = 'none';
+    clearInactivityTimer();
+    return;
   }
-  if (e.key === ' ' && state.paused) {
+  // 空格：恢复暂停
+  if (e.key===' ' && state.paused) {
     e.preventDefault();
     state.paused = false;
-    if (state.pauseStart) {
-      state.pauseLog.push({ start: state.pauseStart, end: Date.now() });
-      state.pauseStart = null;
-    }
+    if (state.pauseStart) { state.pauseLog.push({start:state.pauseStart,end:Date.now()}); state.pauseStart=null; }
     document.getElementById('pauseOverlay').classList.remove('visible');
-    document.getElementById('keyHint').style.display = 'block';
-    document.getElementById('ringLegend').style.display = 'block';
+    const activeBlocks = ['Block_A','Block_B','Block_C','Block_D1','Block_D2'];
+    if (activeBlocks.includes(state.currentBlock)) {
+      document.getElementById('keyHint').style.display = 'block';
+      document.getElementById('ringLegend').style.display = 'block';
+    }
+    if (state.inactivityActive) startInactivityTimer();
+    return;
+  }
+  // \ 键：研究者绕过（进入测试模式，跳到下一阶段指导语，不发邮件）
+  if (e.key==='\\' && !e.ctrlKey) {
+    e.preventDefault();
+    const pwd = prompt('研究者内部码：');
+    if (pwd===RESEARCHER_PASSWORD) {
+      state.researcherBypass = true;
+      state.isTestMode = true;
+      clearInactivityTimer();
+      state.inactivityActive = false;
+      try { jsPsych.finishTrial({researcher_skip:true}); } catch(ex) {}
+    } else if (pwd!==null) { alert('密码错误'); }
+    return;
+  }
+  // Ctrl+\ ：管理员面板
+  if (e.key==='\\' && e.ctrlKey) {
+    e.preventDefault();
+    showAdminPanel();
+    return;
   }
 });
 
 // ============================================================
-// 9. 完成页：奖励选择 + 联系方式
+// 12. JSONBin 参与人数统计
 // ============================================================
-function selectReward(type) {
-  state.rewardChoice = type;
-  const labels = { cash: '10元红包', gift: '纪念品盲盒', none: '无需奖励' };
-  const msg = document.getElementById('rewardConfirm');
-  msg.style.display = 'block';
-
-  if (type === 'none') {
-    msg.textContent = '✓ 已记录。感谢你的参与，可直接关闭此页面。';
-    document.getElementById('contactForm').style.display = 'none';
-  } else {
-    msg.textContent = `✓ 已选择：${labels[type]}。请填写联系方式以便发放。`;
-    document.getElementById('contactForm').style.display = 'block';
-  }
-  try { jsPsych.data.addProperties({ reward_choice: type }); } catch(e) {}
+async function jsonbinGet() {
+  if (!JSONBIN_BIN_ID) return {count:0,open:true};
+  try {
+    const r = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`,
+      {headers:{'X-Master-Key':JSONBIN_API_KEY}});
+    return (await r.json()).record || {count:0,open:true};
+  } catch(e) { console.warn('JSONBin 读取失败，默认开启'); return {count:0,open:true}; }
+}
+async function jsonbinPut(data) {
+  if (!JSONBIN_BIN_ID) return;
+  try {
+    await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`,{
+      method:'PUT',
+      headers:{'Content-Type':'application/json','X-Master-Key':JSONBIN_API_KEY},
+      body: JSON.stringify(data)
+    });
+  } catch(e) { console.warn('JSONBin 写入失败'); }
+}
+async function incrementCount() {
+  if (!JSONBIN_BIN_ID || state.isTestMode) return;
+  const s = await jsonbinGet();
+  await jsonbinPut({...s, count:(s.count||0)+1});
 }
 
-function submitContact() {
+// ============================================================
+// 13. 管理员面板
+// ============================================================
+async function showAdminPanel() {
+  const pwd = prompt('管理面板密码：');
+  if (pwd!==ADMIN_PASSWORD) { if(pwd!==null) alert('密码错误'); return; }
+  const panel = document.getElementById('adminPanel');
+  panel.style.display = 'block';
+  const s = await jsonbinGet();
+  document.getElementById('adminCount').textContent = s.count||0;
+  document.getElementById('adminStatus').textContent = s.open ? '🟢 开启中' : '🔴 已关闭';
+}
+async function adminToggle(open) {
+  const s = await jsonbinGet();
+  await jsonbinPut({...s, open});
+  document.getElementById('adminStatus').textContent = open ? '🟢 开启中' : '🔴 已关闭';
+  alert(open ? '✅ 实验已开启' : '🔴 实验已关闭，新访客将看到结束页面');
+}
+
+// ============================================================
+// 14. 参与者表单提交
+// ============================================================
+async function submitParticipantForm() {
+  const gender  = document.querySelector('input[name="gender"]:checked');
+  const reward  = document.querySelector('input[name="reward"]:checked');
+  const age     = document.getElementById('ageInput').value.trim();
   const contact = document.getElementById('contactInput').value.trim();
-  if (!contact) {
-    alert('请输入微信号或手机号');
-    return;
+
+  if (!gender) { alert('请选择性别'); return; }
+  if (!age)    { alert('请填写年龄'); return; }
+  if (!reward) { alert('请选择奖励方式'); return; }
+  if (reward.value!=='none' && !contact) {
+    if (!confirm('您选择了奖励但未填写联系方式，确定不填写吗？')) return;
   }
-  // 单独发一封只含联系方式的邮件，行为数据与身份信息物理分离
-  sendExperimentEmail(contact, state.rewardChoice);
-  console.log('联系方式已提交并发送:', contact);
-  document.getElementById('submitContactBtn').disabled = true;
-  document.getElementById('contactConfirm').style.display = 'block';
-  document.getElementById('contactConfirm').textContent =
-    '✅ 已提交！我们将在24小时内通过微信联系你。';
+
+  state.participantInfo = { gender:gender.value, age, reward:reward.value, contact:contact||'未填写' };
+
+  const btn = document.getElementById('submitFormBtn');
+  btn.disabled = true;
+  btn.textContent = '提交中...';
+
+  await incrementCount();
+  const ok = await sendExperimentEmail();
+
+  const cfm = document.getElementById('formConfirm');
+  cfm.style.display = 'block';
+  if (ok) {
+    cfm.textContent = '✅ 已提交！如选择了奖励，研究者将在24小时内通过微信联系您。';
+    btn.textContent = '已提交 ✓';
+  } else {
+    cfm.style.color = '#f39c12';
+    cfm.textContent = '⚠ 网络问题导致自动提交失败，请截图此页面联系研究者。';
+    btn.textContent = '提交失败';
+    console.log('=== 数据备份（请发给研究者）===\n', buildEmailBody());
+  }
 }
 
 // ============================================================
-// 10. 序列生成
+// 15. 邮件构建与发送
 // ============================================================
-const LETTERS       = ['B','C','D','F','G','H','J','K'];
+function aggregateBlock(phase) {
+  const trials = jsPsych.data.get()
+    .filter({phase,trial_type_custom:'stimulus'}).values()
+    .filter(d=>d.responded!==undefined);
+  if (!trials.length) return null;
+  const acc = trials.filter(d=>d.correct).length/trials.length;
+  const rts = trials.filter(d=>d.rt>0).map(d=>d.rt);
+  const ens = trials.filter(d=>d.energy!==undefined).map(d=>d.energy);
+  return { acc:(acc*100).toFixed(1)+'%', rt:rts.length?Math.round(arrMean(rts))+'ms':'N/A', energy:ens.length?arrMean(ens).toFixed(1):'N/A' };
+}
+
+
+
+// 行为数据正文（不含联系信息）
+function buildBehaviorBody() {
+  const now  = new Date().toISOString().slice(0,19).replace('T',' ');
+  const b    = state.baseline||{};
+  const nb   = state.naturalBeta||{};
+  const gb   = state.gammaBar||{};
+  const w    = state.weights||{};
+  const intc = state.driftIntercept||{};
+  const fmt  = (v,d=3) => (v!=null&&isFinite(v)) ? (+v).toFixed(d) : 'N/A';
+
+  const blk = name => {
+    const s = aggregateBlock(name);
+    return s ? `${name.padEnd(14)}: 准确率=${s.acc}  RT=${s.rt}  均值能量=${s.energy}` : `${name.padEnd(14)}: 无数据`;
+  };
+
+  let tlxLine='N/A';
+  try {
+    const td = jsPsych.data.get().filter({trial_type:'survey-html-form'}).last(1).values()[0]||{};
+    tlxLine = Object.entries(td.response||{}).map(([k,v])=>`${k}=${v}`).join('  ');
+  } catch(e) {}
+
+  const pTotal = state.pauseLog.reduce((s,p)=>s+(p.end-p.start),0);
+
+  return `
+专属码: ${state.completionCode||'N/A'}  |  时间: ${now}
+ABC顺序: ${BLOCK_ABC_ORDER.join('-')}
+
+--- 数据预处理 ---
+眨眼频率: EMA在线平滑 α=${EMA_ALPHA_BLINK}（公式: ŝₜ=α·sₜ+(1-α)·ŝₜ₋₁）
+头部运动: EMA在线平滑 α=${EMA_ALPHA_HEAD}
+按键RT-CV: 20试次滑动窗口（内在平滑）
+
+--- 个体基线（漂移窗口 OLS 回归）---
+Ŝ_baseline: 眨眼=${fmt(intc.blink,2)}  头部=${fmt(intc.head,3)}  按键CV=${fmt(intc.rtCV,3)}
+SD:         眨眼=${fmt(b.blinkStd,2)}   头部=${fmt(b.headStd,3)}  按键CV=${fmt(b.rtCVStd,3)}
+
+--- 自然回归系数 β（WLS，仅参考）---
+β眨眼=${fmt(nb.blink,4)}  β头部=${fmt(nb.head,5)}  β按键CV=${fmt(nb.rtCV,5)}
+
+--- 单信号反馈增益（A/B/C WLS聚合）---
+γ̄1眨眼: ${fmt(gb.blink)}  方向=${state.directionBlink}（${state.directionBlink===1?'↑=状态差':'↑=状态好'}）
+γ̄2头部: ${fmt(gb.head)}  方向=${state.directionHead}（${state.directionHead===1?'↑=状态差':'↑=状态好'}）
+γ̄3按键: ${fmt(gb.rtCV)}  方向=${state.directionRT}（${state.directionRT===1?'↑=状态差':'↑=状态好'}）
+
+--- 归一化权重 ---
+w1眨眼=${fmt(w.blink)}  w2头部=${fmt(w.head)}  w3按键=${fmt(w.rtCV)}
+
+--- Block D 复合反馈增益 ---
+γ̄_D=${fmt(gb.d)}  （真反馈: ${D1_IS_TRUE?'D1':'D2'}）
+
+--- Block 绩效摘要 ---
+${blk('热身(1-back)')}
+${blk('高负荷')}
+${blk('漂移窗口')}
+${blk('Block_A')}
+${blk('Block_B')}
+${blk('Block_C')}
+${blk('Block_D1')}  [${D1_IS_TRUE?'真反馈':'假反馈'}]
+${blk('Block_D2')}  [${D2_IS_TRUE?'真反馈':'假反馈'}]
+
+--- NASA-TLX ---
+${tlxLine}
+
+--- 实验控制 ---
+D1=${D1_IS_TRUE?'真':'假'}  D2=${D2_IS_TRUE?'真':'假'}
+暂停次数=${state.pauseLog.length}  总暂停=${Math.round(pTotal/1000)}s
+  `.trim();
+}
+
+// 参与者信息正文（单独存放，与行为数据隔离）
+function buildParticipantBody() {
+  const p = state.participantInfo;
+  const now = new Date().toISOString().slice(0,19).replace('T',' ');
+  return `
+专属码: ${state.completionCode||'N/A'}  |  时间: ${now}
+性别: ${p.gender||'未填写'}
+年龄: ${p.age||'未填写'}
+奖励: ${p.reward||'未填写'}
+联系方式: ${p.contact||'未填写'}
+  `.trim();
+}
+
+// 合并兼容旧代码调用
+function buildEmailBody() {
+  return buildBehaviorBody() + '\n\n========== 参与者信息 ==========\n' + buildParticipantBody();
+}
+
+async function sendExperimentEmail() {
+  if (state.isTestMode) {
+    console.log('[测试模式] 跳过发送。\n=== 行为数据 ===\n', buildBehaviorBody(),
+                '\n=== 参与者信息 ===\n', buildParticipantBody());
+    return true;
+  }
+  if (!EMAILJS_SERVICE_ID || EMAILJS_SERVICE_ID==='YOUR_SERVICE_ID') {
+    console.warn('⚠ EmailJS 未配置，跳过发送。请在代码顶部填写三个 ID。');
+    return false;
+  }
+
+  const code = state.completionCode||'--';
+  const date = new Date().toLocaleDateString('zh-CN');
+
+  // ── 两个部分合为一封邮件，通过两个模板变量区分
+  // EmailJS 模板建议：
+  //   主题：{{subject}}
+  //   正文：
+  //   【行为数据】
+  //   {{message1}}
+  //
+  //   【参与者信息】
+  //   {{message2}}
+  try {
+    const res = await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+      subject:  `[N-back] ${code} | ${date}`,
+      message1: buildBehaviorBody(),
+      message2: buildParticipantBody(),
+    });
+    console.log('✅ 邮件发送成功 status:', res.status, '| text:', res.text);
+    return true;
+  } catch(e) {
+    // 详细错误信息帮助调试
+    console.error('❌ EmailJS 发送失败');
+    console.error('status:', e.status);
+    console.error('text:', e.text);
+    console.error('完整对象:', JSON.stringify(e));
+    // 降级备份：打印到控制台，截图可找回数据
+    console.log('\n=== 数据备份（请截图或复制）===\n', buildEmailBody());
+    return false;
+  }
+}
+
+// ============================================================
+// 16. 序列生成
+// ============================================================
+const LETTERS        = ['B','C','D','F','G','H','J','K'];
 const STIM_DURATION  = 500;
 const TRIAL_DURATION = 2000;
 const TARGET_RATE    = 0.33;
 
 const BLOCK_TRIALS = {
-  warmup: 30, highload: 60, drift: 60,
-  blockA: 45, blockB: 30,  blockC: 60,
-  blockD1: 90, blockD2: 90,
+  warmup:15, highload:60, drift:60,
+  blockA:45, blockB:30, blockC:60,
+  blockD1:90, blockD2:90,
 };
 
-function generateSequence(numTrials, nBack, targetRate) {
-  const sequence = [], isTarget = [];
-  for (let i = 0; i < numTrials; i++) {
-    if (i >= nBack && Math.random() < targetRate) {
-      sequence.push(sequence[i - nBack]);
-      isTarget.push(true);
-    } else {
-      let letter, attempts = 0;
-      do {
-        letter = LETTERS[Math.floor(Math.random() * LETTERS.length)];
-        attempts++;
-      } while (i >= nBack && letter === sequence[i - nBack] && attempts < 20);
-      sequence.push(letter); isTarget.push(false);
+function generateSequence(n, nBack, rate) {
+  const seq=[], isTgt=[];
+  for (let i=0;i<n;i++) {
+    if (i>=nBack && Math.random()<rate) { seq.push(seq[i-nBack]); isTgt.push(true); }
+    else {
+      let l, att=0;
+      do { l=LETTERS[Math.floor(Math.random()*LETTERS.length)]; att++; }
+      while (i>=nBack && l===seq[i-nBack] && att<20);
+      seq.push(l); isTgt.push(false);
     }
   }
-  return { sequence, isTarget };
+  return {sequence:seq,isTarget:isTgt};
 }
 
 const sequences = {
@@ -894,28 +971,42 @@ const sequences = {
 };
 
 // ============================================================
-// 11. N-back Block 构建
+// 17. N-back Block 构建
 // ============================================================
+const BLOCK_ABC_CONFIG = {
+  A: {seq:()=>sequences.blockA, phaseName:'Block_A', gammaKey:'blink', title:'Block A（约1.5分钟）', signalDesc:'眨眼频率'},
+  B: {seq:()=>sequences.blockB, phaseName:'Block_B', gammaKey:'head',  title:'Block B（约1分钟）',   signalDesc:'头部姿态稳定性'},
+  C: {seq:()=>sequences.blockC, phaseName:'Block_C', gammaKey:'rtCV',  title:'Block C（约2分钟）',   signalDesc:'按键节律稳定性'},
+};
+
+const TWO_TASKS_HTML = `
+  <div class="task-box">
+    📌 <strong>本阶段核心任务（两点）：</strong><br>
+    ① <strong>首要：</strong>尽力保证字母判断的<strong>准确率</strong><br>
+    ② <strong>在此基础上：</strong>尽量让信号环保持<strong style="color:#2ecc71">绿色</strong>
+  </div>`;
+
 function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
-  const { sequence, isTarget } = seqObj;
+  const {sequence,isTarget} = seqObj;
   const trials = [];
 
-  // 判断该 block 对应哪个 gammaLog 键（A/B/C 各自的单信号，D 用融合）
   const gammaKey =
-    blockName === 'Block_A'  ? 'blink' :
-    blockName === 'Block_B'  ? 'head'  :
-    blockName === 'Block_C'  ? 'rtCV'  :
-    (blockName === 'Block_D1' || blockName === 'Block_D2') ? 'd' : null;
+    blockName==='Block_A' ? 'blink' :
+    blockName==='Block_B' ? 'head'  :
+    blockName==='Block_C' ? 'rtCV'  :
+    (blockName==='Block_D1'||blockName==='Block_D2') ? 'd' : null;
 
-  const naturalBetaForBlock =
-    blockName === 'Block_A'  ? () => state.naturalBeta.blink :
-    blockName === 'Block_B'  ? () => state.naturalBeta.head  :
-    blockName === 'Block_C'  ? () => state.naturalBeta.rtCV  :
-    () => state.weights.blink * state.naturalBeta.blink
-        + state.weights.head  * state.naturalBeta.head
-        + state.weights.rtCV  * state.naturalBeta.rtCV;
+  const getBeta = () => {
+    if (gammaKey==='d') {
+      const w=state.weights;
+      return w.blink*state.naturalBeta.blink+w.head*state.naturalBeta.head+w.rtCV*state.naturalBeta.rtCV;
+    }
+    return 0; // β_k=0
+  };
 
   sequence.forEach((letter, i) => {
+    const isWarmup = i < nBack;
+
     // 注视点
     trials.push({
       type: jsPsychHtmlKeyboardResponse,
@@ -923,41 +1014,47 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
       choices: 'NO_KEYS',
       trial_duration: 300,
       on_start: function() {
+        if (state.researcherBypass) { jsPsych.finishTrial({skipped:true}); return; }
         state.currentBlock = blockName;
+        state.inactivityActive = false;
+        clearInactivityTimer();
         document.getElementById('keyHint').style.display = 'block';
         document.getElementById('ringLegend').style.display = 'block';
       },
-      data: { phase: blockName, trial_type_custom: 'fixation' }
+      data: {phase:blockName, trial_type_custom:'fixation'}
     });
 
-    // 「无需操作」提示：前 nBack 个字母不需要作答
-    // 论文说明：因 n-back 任务第一个有效比较发生在第 nBack+1 个字母，
-    //   前 nBack 个字母显示灰色提示，避免被试焦虑或作出无意义响应。
-    const isWarmupTrial = i < nBack;
-    const noActionHint = isWarmupTrial
-      ? `<div style="font-size:15px;color:#888;margin-top:6px">（前${nBack}个字母无需作答）</div>`
+    // 字母刺激
+    const noActionHint = isWarmup
+      ? `<div class="no-action-hint">第 ${i+1} 个字母 — 无需作答，请先记住</div>`
       : '';
 
-    // 字母刺激
     trials.push({
       type: jsPsychHtmlKeyboardResponse,
-      stimulus: function() {
-        return `
-          <div class="letter-display">${letter}</div>
-          ${noActionHint}
-          <div class="phase-label">${blockName} &nbsp;|&nbsp; ${i+1} / ${sequence.length}</div>
-          <div id="energyRing"></div>
-        `;
-      },
-      choices: ['f', 'j'],
+      stimulus: () => `
+        <div class="letter-display">${letter}</div>
+        ${noActionHint}
+        <div class="phase-label">${blockName} &nbsp;|&nbsp; ${i+1} / ${sequence.length}</div>
+        <div id="energyRing"></div>
+      `,
+      choices: ['f','j'],
       trial_duration: TRIAL_DURATION,
       stimulus_duration: STIM_DURATION,
-      response_ends_trial: false,
+      response_ends_trial: false,  // 只记录第一次按键，trial 不提前结束
+      on_start: function() {
+        if (state.researcherBypass) { jsPsych.finishTrial({skipped:true}); return; }
+        if (!isWarmup) {
+          state.inactivityActive = true;
+          startInactivityTimer();
+        }
+      },
       on_finish: function(data) {
-        const responded = data.response !== null;
-        const correct =
-          ( isTarget[i] && data.response === 'j') ||
-          (!isTarget[i] && data.response === 'f');
+        state.inactivityActive = false;
+        clearInactivityTimer();
+        if (data.skipped) return;
+
+        const responded = data.response!==null;
+        const correct = (isTarget[i]&&data.response==='j')||(!isTarget[i]&&data.response==='f');
 
         data.phase             = blockName;
         data.trial_index_block = i;
@@ -966,330 +1063,165 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
         data.responded         = responded;
         data.correct           = correct;
         data.blink_rate        = state.blinkRate;
+        data.ema_blink         = state.emaBlinkRate!==null ? +state.emaBlinkRate.toFixed(2) : null;
         data.head_yaw          = +state.headYaw.toFixed(3);
         data.head_pitch        = +state.headPitch.toFixed(3);
+        data.ema_head          = state.emaHead!==null ? +state.emaHead.toFixed(3) : null;
         data.rt_cv             = +state.rtCV.toFixed(3);
         data.energy            = +state.energyLevel.toFixed(1);
         data.trial_type_custom = 'stimulus';
-        if (blockName === 'Block_D1') data.feedback_type = D1_IS_TRUE ? 'true' : 'fake';
-        if (blockName === 'Block_D2') data.feedback_type = D2_IS_TRUE ? 'true' : 'fake';
+        if (blockName==='Block_D1') data.feedback_type = D1_IS_TRUE?'true':'fake';
+        if (blockName==='Block_D2') data.feedback_type = D2_IS_TRUE?'true':'fake';
 
         if (responded) updateRTHistory(data.rt);
 
-        // ── 逐 trial 反馈增益 γ̂ 计算 ────────────────────────
-        // A/B/C 模型（β_k=0）：γ̂ = -(S_{t+1}-S_t) / ΔS_t
-        // Block D 模型（含复合β）：γ̂ = -(S_{t+1}-S_t) / ΔS_t - β_composite
-        if (gammaKey && state.baseline) {
-          let currS;
-          if (gammaKey === 'd') {
-            currS = getFusedS();
-            data.fused_s = +currS.toFixed(3);
-            if (state.prevFusedS !== null) {
-              const deltaS = state.prevFusedS;
-              if (Math.abs(deltaS) > 0.05) {
-                const betaComposite = naturalBetaForBlock();
-                const gammaHat = -(currS - state.prevFusedS) / deltaS - betaComposite;
-                state.gammaLog.d.push({ gammaHat, weight: Math.abs(deltaS) });
-                data.gamma_hat = +gammaHat.toFixed(3);
+        // γ̂ 逐 trial 计算
+        if (gammaKey && state.baseline && !isWarmup) {
+          if (gammaKey==='d') {
+            const curr = getFusedS();
+            data.fused_s = +curr.toFixed(3);
+            if (state.prevFusedS!==null) {
+              const dS = state.prevFusedS;
+              if (Math.abs(dS)>0.05) {
+                const gh = -(curr-state.prevFusedS)/dS - getBeta();
+                state.gammaLog.d.push({gammaHat:gh, weight:Math.abs(dS)});
+                data.gamma_hat = +gh.toFixed(3);
               }
             }
-            state.prevFusedS = currS;
+            state.prevFusedS = curr;
           } else {
-            currS = getSingleZ(gammaKey);
-            data.single_z = +currS.toFixed(3);
+            const curr = getSingleZ(gammaKey);
+            data.single_z = +curr.toFixed(3);
             const prev = state.prevZ[gammaKey];
-            if (prev !== null) {
-              const deltaS = prev;
-              if (Math.abs(deltaS) > 0.05) {
-                // β_k=0：不减自然回归项
-                const gammaHat = -(currS - prev) / deltaS;
-                state.gammaLog[gammaKey].push({ gammaHat, weight: Math.abs(deltaS) });
-                data.gamma_hat = +gammaHat.toFixed(3);
+            if (prev!==null) {
+              const dS = prev;
+              if (Math.abs(dS)>0.05) {
+                const gh = -(curr-prev)/dS; // β_k=0
+                state.gammaLog[gammaKey].push({gammaHat:gh, weight:Math.abs(dS)});
+                data.gamma_hat = +gh.toFixed(3);
               }
             }
-            state.prevZ[gammaKey] = currS;
+            state.prevZ[gammaKey] = curr;
           }
         }
       }
     });
 
-    // 热身阶段即时正误反馈
+    // 热身即时反馈
     if (showFeedback) {
       trials.push({
         type: jsPsychHtmlKeyboardResponse,
-        stimulus: function() {
+        stimulus: () => {
           const last = jsPsych.data.get().last(1).values()[0];
-          const ok = last && last.correct;
+          const ok = last&&last.correct;
           return `<div style="font-size:52px;margin-top:80px;color:${ok?'#2ecc71':'#e74c3c'}">${ok?'✓ 正确':'✗ 错误'}</div>`;
         },
         choices: 'NO_KEYS',
         trial_duration: 500,
-        data: { phase: blockName, trial_type_custom: 'feedback' }
+        on_start: function() { if (state.researcherBypass) { jsPsych.finishTrial({skipped:true}); return; } },
+        data: {phase:blockName, trial_type_custom:'feedback'}
       });
     }
   });
-
   return trials;
 }
 
 // ============================================================
-// 12. 辅助：指导语 / 倒计时休息 / 基线触发
+// 18. 辅助 trial
 // ============================================================
+const RING_HTML = `
+  <div style="background:#0d1b2a;padding:10px 14px;border-radius:8px;font-size:13px;margin-top:10px">
+    信号环颜色：
+    <span style="color:#2ecc71">●</span> 绿色=偏离小（稳定）&nbsp;
+    <span style="color:#f39c12">●</span> 黄色=偏离中等&nbsp;
+    <span style="color:#e74c3c">●</span> 红色=偏离较大
+  </div>`;
+
 function makeInstruction(html) {
   return {
     type: jsPsychHtmlKeyboardResponse,
     stimulus: `<div class="instruction-box">${html}
-      <p style="text-align:center;font-size:15px;color:#555;margin-top:18px">按 空格键 继续</p></div>`,
+      <p style="text-align:center;font-size:14px;color:#555;margin-top:18px">按 <b>空格键</b> 继续</p></div>`,
     choices: [' '],
     on_start: function() {
+      // 研究者绕过在指导语处停止
+      state.researcherBypass = false;
+      state.inactivityActive = false;
+      clearInactivityTimer();
       document.getElementById('keyHint').style.display = 'none';
       document.getElementById('ringLegend').style.display = 'none';
     }
   };
 }
-
-// 能量环图例说明（嵌入指导语底部的统一片段）
-const RING_LEGEND_HTML = `
-  <div style="background:#0d1b2a;padding:10px 14px;border-radius:8px;font-size:14px;margin-top:12px">
-    能量环颜色含义：
-    <span style="color:#2ecc71">●</span> 绿色=状态良好 &nbsp;
-    <span style="color:#f39c12">●</span> 黄色=状态一般 &nbsp;
-    <span style="color:#e74c3c">●</span> 红色=状态下降
-  </div>`;
 
 function makeCountdownRest(seconds, label) {
   return {
     type: jsPsychHtmlKeyboardResponse,
-    stimulus: `
-      <div class="instruction-box" style="text-align:center">
-        <h2>🕐 ${label}</h2>
-        <p>请<strong>闭眼休息</strong>，放松面部和颈部肌肉。</p>
-        <div id="countdownDisplay" style="font-size:64px;color:#f39c12;margin:20px 0">${seconds}</div>
-        <p style="color:#666;font-size:14px">倒计时结束后自动继续 &nbsp;|&nbsp; 或按 <b>空格键</b> 提前继续</p>
-      </div>`,
+    stimulus: `<div class="instruction-box" style="text-align:center">
+      <h2>🕐 ${label}</h2>
+      <p>请<strong>闭眼休息</strong>，放松面部和颈部肌肉。</p>
+      <div id="countdownDisplay" style="font-size:64px;color:#f39c12;margin:20px 0">${seconds}</div>
+      <p style="color:#666;font-size:14px">倒计时结束后自动继续 &nbsp;|&nbsp; 或按 <b>空格键</b> 提前继续</p>
+    </div>`,
     choices: [' '],
-    trial_duration: seconds * 1000,
+    trial_duration: seconds*1000,
     on_start: function() {
+      if (state.researcherBypass) { jsPsych.finishTrial({skipped:true}); return; }
       state.currentBlock = 'rest';
+      state.inactivityActive = false;
+      clearInactivityTimer();
       document.getElementById('keyHint').style.display = 'none';
       document.getElementById('ringLegend').style.display = 'none';
-      let remaining = seconds;
+      let rem = seconds;
       const iv = setInterval(() => {
-        remaining--;
+        rem--;
         const el = document.getElementById('countdownDisplay');
-        if (el) el.textContent = Math.max(remaining, 0);
-        if (remaining <= 0) clearInterval(iv);
-      }, 1000);
+        if (el) el.textContent = Math.max(rem,0);
+        if (rem<=0) clearInterval(iv);
+      },1000);
     }
   };
 }
 
-// 基线计算触发trial（无感知，自动跳过）
-const baselineTriggerTrial = {
-  type: jsPsychHtmlKeyboardResponse,
-  stimulus: '<div style="margin-top:200px;color:#333;font-size:16px">正在校准个体基线...</div>',
-  choices: 'NO_KEYS',
-  trial_duration: 800,
-  on_start: function() { computeBaseline(); }
-};
-
-// 方向系数计算触发trial（Block A/B/C 各自结束后无感知调用）
-function makeDirectionTrigger(blockName) {
+function makeTrigger(label, fn, ms=600) {
   return {
     type: jsPsychHtmlKeyboardResponse,
-    stimulus: '<div style="margin-top:200px;color:#333;font-size:16px">正在分析信号方向...</div>',
+    stimulus: `<div style="margin-top:200px;color:#333;font-size:14px">${label}</div>`,
     choices: 'NO_KEYS',
-    trial_duration: 400,
-    on_start: function() { computeDirectionCoeff(blockName); }
-  };
-}
-
-// 三个 block 全部完成后更新权重（无感知，Block D 前调用）
-const weightsUpdateTrigger = {
-  type: jsPsychHtmlKeyboardResponse,
-  stimulus: '<div style="margin-top:200px;color:#333;font-size:16px">正在整合信号权重...</div>',
-  choices: 'NO_KEYS',
-  trial_duration: 400,
-  on_start: function() { computeAndUpdateWeights(); }
-};
-
-// Block D 结束后聚合 γ̄_D（真反馈 block 才有意义）
-function makeBlockDGammaTrigger(blockName) {
-  return {
-    type: jsPsychHtmlKeyboardResponse,
-    stimulus: '<div style="margin-top:200px;color:#333;font-size:16px">正在计算反馈增益...</div>',
-    choices: 'NO_KEYS',
-    trial_duration: 400,
+    trial_duration: ms,
     on_start: function() {
-      const isTrueBlock =
-        (blockName === 'Block_D1' && D1_IS_TRUE) ||
-        (blockName === 'Block_D2' && D2_IS_TRUE);
-      if (isTrueBlock) {
-        const g = computeWLSGamma(state.gammaLog.d);
-        state.gammaBar.d = g;
-        console.log(`Block D (${blockName}) γ̄ =`, g.toFixed(3));
-      }
+      if (state.researcherBypass) { jsPsych.finishTrial({skipped:true}); return; }
+      fn();
     }
   };
 }
 
-// A/B/C 顺序在页面加载时随机确定（平衡顺序效应）
-// 论文说明：Block A/B/C 采用被试间拉丁方顺序随机化，以控制练习效应。
-const BLOCK_ABC_ORDER = ['A','B','C'].sort(() => Math.random() - 0.5);
+const baselineTrigger    = makeTrigger('正在校准个体基线...', computeBaseline);
+const weightsUpdateTrigger = makeTrigger('正在整合信号权重...', computeAndUpdateWeights, 400);
 
-// A/B/C 各 block 的配置（与字母无关，随顺序排列）
-const BLOCK_ABC_CONFIG = {
-  A: {
-    seq:       () => sequences.blockA,
-    phaseName: 'Block_A',
-    signal:    'blink_rate',
-    title:     'Block A（约1.5分钟）',
-    desc:      '能量环将根据你的 <strong>眨眼频率</strong> 实时变化。',
-  },
-  B: {
-    seq:       () => sequences.blockB,
-    phaseName: 'Block_B',
-    signal:    'head_yaw',
-    title:     'Block B（约1分钟）',
-    desc:      '能量环将根据你的 <strong>头部姿态稳定性</strong> 实时变化。',
-  },
-  C: {
-    seq:       () => sequences.blockC,
-    phaseName: 'Block_C',
-    signal:    'rt_cv',
-    title:     'Block C（约2分钟）',
-    desc:      '能量环将根据你的 <strong>按键节律稳定性</strong> 实时变化。',
-  },
-};
-
-// ============================================================
-// EmailJS 数据发送
-// ── 配置说明：在 emailjs.com 注册并填写以下三个 ID
-//    SERVICE_ID:  你的 Email Service（如 Gmail）的服务 ID
-//    TEMPLATE_ID: 邮件模板 ID（模板中用 {{message}} 接收正文）
-//    PUBLIC_KEY:  账号 Public Key（在 Account → API Keys 中查看）
-// ============================================================
-const EMAILJS_SERVICE_ID  = 'YOUR_SERVICE_ID';
-const EMAILJS_TEMPLATE_ID = 'YOUR_TEMPLATE_ID';
-const EMAILJS_PUBLIC_KEY  = 'YOUR_PUBLIC_KEY';
-
-// 聚合单个 block 的绩效摘要
-function aggregateBlock(phaseName) {
-  const trials = jsPsych.data.get()
-    .filter({ phase: phaseName, trial_type_custom: 'stimulus' })
-    .values()
-    .filter(d => d.responded !== undefined);
-  if (!trials.length) return null;
-  const acc = trials.filter(d => d.correct).length / trials.length;
-  const rts  = trials.filter(d => d.rt > 0).map(d => d.rt);
-  const energies = trials.filter(d => d.energy !== undefined).map(d => d.energy);
-  return {
-    n:        trials.length,
-    acc:      (acc * 100).toFixed(1) + '%',
-    rt:       rts.length ? Math.round(arrMean(rts)) + 'ms' : 'N/A',
-    energy:   energies.length ? arrMean(energies).toFixed(1) : 'N/A',
-  };
+function makeDirectionTrigger(blockName) {
+  return makeTrigger('正在分析信号方向...', ()=>computeDirectionCoeff(blockName), 400);
 }
-
-function buildEmailBody(contact, reward) {
-  const now  = new Date().toISOString().slice(0, 19).replace('T', ' ');
-  const b    = state.baseline    || {};
-  const nb   = state.naturalBeta || {};
-  const gb   = state.gammaBar    || {};
-  const w    = state.weights     || {};
-  const intc = state.driftIntercept || {};
-
-  const fmt = (v, d=3) => (v != null && isFinite(v)) ? (+v).toFixed(d) : 'N/A';
-
-  const blk = name => {
-    const s = aggregateBlock(name);
-    return s ? `${name.padEnd(14)}: 准确率=${s.acc}  RT=${s.rt}  均值能量=${s.energy}` : `${name.padEnd(14)}: 无数据`;
-  };
-
-  let tlxLine = 'N/A';
-  try {
-    const tlxData = jsPsych.data.get().filter({ trial_type: 'survey-html-form' }).last(1).values()[0] || {};
-    const r = tlxData.response || {};
-    tlxLine = Object.entries(r).map(([k,v]) => `${k}=${v}`).join('  ');
-  } catch(e) {}
-
-  const pauseTotal = state.pauseLog.reduce((s, p) => s + (p.end - p.start), 0);
-  const wTotal = (w.blink||0) + (w.head||0) + (w.rtCV||0);
-
-  return `
-=== 参与者 ===
-专属码: ${state.completionCode || 'N/A'}  |  时间: ${now}
-奖励选择: ${reward || '未填写'}  |  联系方式: ${contact || '未填写'}
-Block A/B/C 顺序: ${BLOCK_ABC_ORDER.join('-')}
-
-=== 个体基线（漂移窗口 OLS 回归）===
-Ŝ_baseline（截距）:  眨眼=${fmt(intc.blink,2)}/min  头部=${fmt(intc.head,3)}  按键CV=${fmt(intc.rtCV,3)}
-SD（归一化用）:       眨眼=${fmt(b.blinkStd,2)}      头部=${fmt(b.headStd,3)}  按键CV=${fmt(b.rtCVStd,3)}
-
-=== 自然回归系数 β（漂移窗口 WLS 估计，理论参考值，不纳入 A/B/C 公式）===
-β_blink=${fmt(nb.blink,4)}  β_head=${fmt(nb.head,5)}  β_rtCV=${fmt(nb.rtCV,5)}
-（注：本研究假设 β_k=0，上述值为漂移窗口实测估计，仅供参考）
-
-=== 单信号反馈增益 γ̄（Block A/B/C WLS 聚合）===
-γ̄1 眨眼 (Block A): ${fmt(gb.blink)}  →  direction=${state.directionBlink}  (${state.directionBlink===1?'信号↑=状态差':'信号↑=状态好'})
-γ̄2 头部 (Block B): ${fmt(gb.head)}  →  direction=${state.directionHead}  (${state.directionHead===1?'信号↑=状态差':'信号↑=状态好'})
-γ̄3 按键 (Block C): ${fmt(gb.rtCV)}  →  direction=${state.directionRT}  (${state.directionRT===1?'信号↑=状态差':'信号↑=状态好'})
-
-=== 归一化权重 w1-w3（∝ |γ̄_k|）===
-w1 眨眼=${fmt(w.blink)}  w2 头部=${fmt(w.head)}  w3 按键=${fmt(w.rtCV)}  总和=${fmt(wTotal)}
-
-=== Block D 复合反馈增益 γ̄_D（真反馈 block）===
-γ̄_D = ${fmt(gb.d)}  （真反馈 block: ${D1_IS_TRUE ? 'D1' : 'D2'}）
-
-=== Block 绩效摘要 ===
-${blk('热身(1-back)')}
-${blk('高负荷')}
-${blk('漂移窗口')}
-${blk('Block_A')}
-${blk('Block_B')}
-${blk('Block_C')}
-${blk('Block_D1')}  [${D1_IS_TRUE ? '真反馈' : '假反馈'}]
-${blk('Block_D2')}  [${D2_IS_TRUE ? '真反馈' : '假反馈'}]
-
-=== NASA-TLX ===
-${tlxLine}
-
-=== 实验控制 ===
-D1=${D1_IS_TRUE?'真反馈':'假反馈'}  D2=${D2_IS_TRUE?'真反馈':'假反馈'}
-暂停次数=${state.pauseLog.length}  总暂停=${Math.round(pauseTotal/1000)}s
-`.trim();
-}
-
-async function sendExperimentEmail(contact, reward) {
-  // 检查 emailjs 是否已载入
-  if (typeof emailjs === 'undefined') {
-    console.warn('EmailJS 未载入，跳过发送。本地 body:', buildEmailBody(contact, reward));
-    return;
-  }
-  try {
-    emailjs.init(EMAILJS_PUBLIC_KEY);
-    const body = buildEmailBody(contact, reward);
-    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { message: body });
-    console.log('✅ 实验数据邮件已发送');
-  } catch(e) {
-    console.error('EmailJS 发送失败:', e);
-  }
+function makeGammaTrigger(blockName) {
+  return makeTrigger('正在计算反馈增益...', ()=>{
+    const isTrue=(blockName==='Block_D1'&&D1_IS_TRUE)||(blockName==='Block_D2'&&D2_IS_TRUE);
+    if (isTrue) { state.gammaBar.d=computeWLSGamma(state.gammaLog.d); console.log('γ̄_D=',state.gammaBar.d.toFixed(3)); }
+  }, 400);
 }
 
 // ============================================================
-// 13. NASA-TLX 问卷
+// 19. NASA-TLX
 // ============================================================
 function makeNASATLX() {
   const dims = [
-    { name: 'mental_demand',   label: '脑力需求',  desc: '任务需要多少思考、判断和记忆？' },
-    { name: 'physical_demand', label: '体力需求',  desc: '任务需要多少身体活动（如眼手协调）？' },
-    { name: 'temporal_demand', label: '时间压力',  desc: '任务节奏有多紧迫、时间是否充裕？' },
-    { name: 'performance',     label: '完成效果',  desc: '你对自己的表现有多满意？（左=非常满意）' },
-    { name: 'effort',          label: '努力程度',  desc: '你为完成任务付出了多少努力？' },
-    { name: 'frustration',     label: '挫败感',    desc: '你感到多沮丧、烦躁或压力？' },
+    {name:'mental_demand',   label:'脑力需求',  desc:'任务需要多少思考、判断和记忆？'},
+    {name:'physical_demand', label:'体力需求',  desc:'任务需要多少身体活动（如眼手协调）？'},
+    {name:'temporal_demand', label:'时间压力',  desc:'任务节奏有多紧迫、时间是否充裕？'},
+    {name:'performance',     label:'完成效果',  desc:'你对自己的表现有多满意？（左=非常满意）'},
+    {name:'effort',          label:'努力程度',  desc:'你为完成任务付出了多少努力？'},
+    {name:'frustration',     label:'挫败感',    desc:'你感到多沮丧、烦躁或压力？'},
   ];
-
-  const slidersHtml = dims.map(d => `
+  const html = dims.map(d=>`
     <div class="tlx-item">
       <label>${d.label}</label>
       <span class="tlx-desc">${d.desc}</span>
@@ -1300,21 +1232,17 @@ function makeNASATLX() {
         <span>高</span>
       </div>
       <div class="slider-val" id="val_${d.name}">50</div>
-    </div>
-  `).join('');
-
+    </div>`).join('');
   return {
     type: jsPsychSurveyHtmlForm,
-    preamble: `
-      <div style="max-width:600px;margin:0 auto">
-        <h2 style="text-align:center">主观负荷评估（NASA-TLX）</h2>
-        <p style="text-align:center;color:#888;font-size:15px">
-          请根据刚才整体的实验体验，拖动滑块评分（约1分钟）
-        </p>
-      </div>`,
-    html: `<div style="max-width:600px;margin:0 auto">${slidersHtml}</div>`,
+    preamble: `<div style="max-width:600px;margin:0 auto">
+      <h2 style="text-align:center">主观负荷评估（NASA-TLX）</h2>
+      <p style="text-align:center;color:#888;font-size:15px">请根据整体体验拖动滑块评分</p></div>`,
+    html: `<div style="max-width:600px;margin:0 auto">${html}</div>`,
     button_label: '提交问卷',
     on_start: function() {
+      state.inactivityActive = false;
+      clearInactivityTimer();
       document.getElementById('keyHint').style.display = 'none';
       document.getElementById('ringLegend').style.display = 'none';
     }
@@ -1322,117 +1250,113 @@ function makeNASATLX() {
 }
 
 // ============================================================
-// 14. 组装完整 Timeline
+// 20. 完整 Timeline
 // ============================================================
 let jsPsych;
 
 function buildTimeline() {
   const tl = [];
 
-  // ── 全局指导语 ──
+  // 全局指导语
   tl.push(makeInstruction(`
     <h2>欢迎参加本实验</h2>
-    <p>本实验共约 <strong>17.5 分钟</strong>，请在安静、光线充足的环境中完成。</p>
-    <p>⚠ 实验要求<strong>全程保持专注</strong>，请提前关闭无关应用，避免打扰。</p>
+    <p>本实验共约 <strong>17.5 分钟</strong>，请在安静、光线充足的环境中全程完成，请勿离座。</p>
     <hr class="section">
-    <p><strong>任务说明：</strong>屏幕中央会依次出现一系列字母，你需要判断：
-    <strong>当前字母是否与若干个之前的字母相同？</strong></p>
+    <p><strong>任务：</strong>屏幕中央依次呈现字母，请判断：</p>
     <div class="highlight-box">
-      🟦 相同（目标）→ 按 <strong>J</strong> 键（右手食指）<br>
-      🟥 不同（非目标）→ 按 <strong>F</strong> 键（左手食指）<br>
-      <span style="font-size:14px;color:#666">每个字母最多作答一次，无需抢按</span>
+      当前字母是否与 <strong>N 个之前</strong> 的字母相同？<br><br>
+      🟦 相同 → 按 <strong>J</strong>（右手食指）&emsp;
+      🟥 不同 → 按 <strong>F</strong>（左手食指）
     </div>
-    <p>屏幕右侧会出现一个<strong>彩色圆环</strong>，实时反映你的专注状态，仅供参考，不影响计分。</p>
-    ${RING_LEGEND_HTML}
-    <p style="font-size:14px;color:#666;margin-top:14px">
-      ⚠ 如遇紧急情况（如需短暂离座），可按 <b>Esc</b> 暂停。
-      非必要请勿使用，频繁暂停会影响数据质量。
+    <hr class="section">
+    <p>屏幕右侧会出现一个<strong>信号环</strong>，根据你的行为反应实时变化。</p>
+    ${RING_HTML}
+    ${TWO_TASKS_HTML}
+    <p style="font-size:13px;color:#666;margin-top:12px">
+      ⚠ 紧急情况可按 <b>Esc</b> 暂停，非必要请勿使用，以免影响数据质量。
     </p>
   `));
 
-  // ── 热身：1-back ──
+  // 热身 1-back（15字母，约30秒）
   tl.push(makeInstruction(`
-    <h2>🔥 热身阶段（约1分钟）</h2>
-    <p>热身使用 <strong>1-back</strong> 规则（比正式实验更简单）：</p>
+    <h2>🔥 热身阶段（约30秒）</h2>
+    <p>使用 <strong>1-back</strong> 规则：判断当前字母是否与<strong>紧邻的上一个</strong>字母相同。</p>
     <div class="highlight-box">
-      判断当前字母是否与<strong>紧邻的上一个</strong>字母相同
+      B → <span style="color:#f39c12;font-weight:bold">B</span>（相同，按 <b>J</b>）&emsp;
+      B → C（不同，按 <b>F</b>）
     </div>
-    <p>示例：B → <span style="color:#f39c12;font-weight:bold">B</span>（相同，按 <b>J</b>）&emsp;
-            B → C（不同，按 <b>F</b>）</p>
-    <p>本阶段有<strong>即时正误反馈</strong>，帮助你熟悉节奏。</p>
-    <p style="color:#888;font-size:14px">⚠ 热身数据不计入正式分析。</p>
+    <p>💡 <strong>第1个字母出现时无需作答</strong>（还没有"上一个"可比较），从第2个字母开始作答。</p>
+    <p>本阶段有即时正误反馈，热身数据不计入分析。</p>
   `));
   tl.push(...createNBackBlock(sequences.warmup, '热身(1-back)', true, 1));
 
-  // ── 切换到2-back ──
+  // 2-back 说明
   tl.push(makeInstruction(`
-    <h2>⚡ 正式开始：切换到 2-back</h2>
-    <p>从现在起难度提升，使用 <strong>2-back</strong> 规则：</p>
+    <h2>⚡ 正式开始：2-back</h2>
+    <p>从现在起使用 <strong>2-back</strong> 规则：判断当前字母是否与 <strong>2个之前</strong> 的字母相同。</p>
     <div class="highlight-box">
-      判断当前字母是否与 <strong>2个之前</strong> 的字母相同
+      B → C → <span style="color:#f39c12;font-weight:bold">B</span>（与2前相同，按 <b>J</b>）<br>
+      B → C → D（不同，按 <b>F</b>）
     </div>
-    <p>示例：B → C → <span style="color:#f39c12;font-weight:bold">B</span>（与2个前的B相同，按 <b>J</b>）<br>
-    &emsp;&emsp;&emsp; B → C → D（不同，按 <b>F</b>）</p>
-    <p>此阶段 <strong>无反馈</strong>，请尽力作答。后续所有阶段均使用此规则。</p>
+    <p>💡 <strong>每段任务前2个字母出现时无需作答</strong>，从第3个开始。</p>
+    <p>此后所有阶段均使用 2-back，无正误反馈，请全力作答。</p>
   `));
   tl.push(...createNBackBlock(sequences.highload, '高负荷', false, 2));
 
-  // ── 漂移窗口 ──
+  // 漂移窗口
   tl.push(makeInstruction(`
     <h2>📊 状态基准采集（约2分钟）</h2>
-    <p>继续 2-back 任务，保持自然节奏。</p>
-    <p>系统将在此阶段建立你的<strong>个体状态基准</strong>，用于后续能量环的个性化校准。</p>
+    <p>继续 2-back 任务，保持自然节奏。系统将建立你的<strong>个体状态基准</strong>。</p>
+    <p>💡 前2个字母出现时无需作答。</p>
   `));
   tl.push(...createNBackBlock(sequences.drift, '漂移窗口', false, 2));
-  tl.push(baselineTriggerTrial);
+  tl.push(baselineTrigger);
 
-  // ── Block A/B/C（顺序随机化，控制练习效应）──
-  // 论文说明：三个单信号验证 block 采用被试间伪随机顺序（BLOCK_ABC_ORDER），
-  //   每名被试在实验开始时随机决定顺序，结果记录在数据中。
+  // Block A/B/C（顺序随机）
   for (const letter of BLOCK_ABC_ORDER) {
     const cfg = BLOCK_ABC_CONFIG[letter];
-    const seqKey = { A: 'blockA', B: 'blockB', C: 'blockC' }[letter];
     tl.push(makeInstruction(`
       <h2>${cfg.title}</h2>
       <p>继续 2-back 任务。</p>
-      <p>${cfg.desc}</p>
-      ${RING_LEGEND_HTML}
+      <p>右侧<strong>信号环</strong>将根据你的 <strong>${cfg.signalDesc}</strong> 实时变化。</p>
+      ${RING_HTML}
+      ${TWO_TASKS_HTML}
+      <p style="font-size:13px;color:#666;margin-top:8px">💡 前2个字母出现时无需作答。</p>
     `));
-    tl.push(...createNBackBlock(sequences[seqKey], cfg.phaseName, false, 2));
+    tl.push(...createNBackBlock(cfg.seq(), cfg.phaseName, false, 2));
     tl.push(makeDirectionTrigger(cfg.phaseName));
   }
-
-  // ── 三信号全部完成后：整合权重和方向（无感知）──
   tl.push(weightsUpdateTrigger);
 
-  // ── Block D-1 ──
+  // Block D-1
   tl.push(makeInstruction(`
     <h2>Block D-1（约3分钟）</h2>
-    <p>继续 2-back 任务。</p>
-    <p>能量环现在综合 <strong>眨眼 + 头部 + 按键</strong> 三种信号实时变化。</p>
-    ${RING_LEGEND_HTML}
+    <p>继续 2-back 任务。信号环将综合 <strong>眨眼 + 头部 + 按键</strong> 三种信号实时变化。</p>
+    ${RING_HTML}
+    ${TWO_TASKS_HTML}
+    <p style="font-size:13px;color:#666;margin-top:8px">💡 前2个字母出现时无需作答。</p>
   `));
   tl.push(...createNBackBlock(sequences.blockD1, 'Block_D1', false, 2));
-  tl.push(makeBlockDGammaTrigger('Block_D1'));
+  tl.push(makeGammaTrigger('Block_D1'));
 
-  // ── 清洗期倒计时 ──
+  // 清洗期
   tl.push(makeCountdownRest(60, '清洗期休息（1分钟）'));
 
-  // ── Block D-2 ──
+  // Block D-2
   tl.push(makeInstruction(`
     <h2>Block D-2（约3分钟）</h2>
-    <p>最后一段 2-back 任务，请保持与之前相同的认真态度。</p>
-    <p>能量环继续综合三种信号实时变化。</p>
-    ${RING_LEGEND_HTML}
+    <p>最后一段 2-back，请保持认真。信号环综合三种信号实时变化。</p>
+    ${RING_HTML}
+    ${TWO_TASKS_HTML}
+    <p style="font-size:13px;color:#666;margin-top:8px">💡 前2个字母出现时无需作答。</p>
   `));
   tl.push(...createNBackBlock(sequences.blockD2, 'Block_D2', false, 2));
-  tl.push(makeBlockDGammaTrigger('Block_D2'));
+  tl.push(makeGammaTrigger('Block_D2'));
 
-  // ── NASA-TLX 问卷 ──
+  // NASA-TLX
   tl.push(makeInstruction(`
     <h2>任务部分完成！🙏</h2>
-    <p>感谢你的坚持。接下来是一份关于刚才体验的<strong>简短主观评估</strong>，约1分钟。</p>
-    <p>请根据你在整个实验中的总体感受来作答，没有对错之分。</p>
+    <p>感谢坚持到这里。接下来是一份简短的主观评估（约1分钟），请根据整体实验体验作答。</p>
   `));
   tl.push(makeNASATLX());
 
@@ -1440,7 +1364,7 @@ function buildTimeline() {
 }
 
 // ============================================================
-// 15. 实验启动
+// 21. 实验启动
 // ============================================================
 async function startExperiment() {
   document.getElementById('startBtn').disabled = true;
@@ -1449,13 +1373,14 @@ async function startExperiment() {
   jsPsych = initJsPsych({
     display_element: 'jspsych-target',
     on_finish: function() {
-      // 记录真伪分配结果
+      if (state.experimentInvalidated) return;
+
       jsPsych.data.addProperties({
-        D1_feedback: D1_IS_TRUE ? 'true' : 'fake',
-        D2_feedback: D2_IS_TRUE ? 'true' : 'fake',
-        block_abc_order: BLOCK_ABC_ORDER.join(''),
-        pause_count: state.pauseLog.length,
-        total_pause_ms: state.pauseLog.reduce((s,p) => s + (p.end - p.start), 0),
+        D1_feedback:      D1_IS_TRUE?'true':'fake',
+        D2_feedback:      D2_IS_TRUE?'true':'fake',
+        block_abc_order:  BLOCK_ABC_ORDER.join(''),
+        pause_count:      state.pauseLog.length,
+        total_pause_ms:   state.pauseLog.reduce((s,p)=>s+(p.end-p.start),0),
       });
 
       state.completionCode = generateCode();
@@ -1463,10 +1388,8 @@ async function startExperiment() {
       document.getElementById('completionScreen').classList.add('visible');
       document.getElementById('keyHint').style.display = 'none';
       document.getElementById('ringLegend').style.display = 'none';
-
-      // 实验结束自动发送行为数据邮件（不含联系方式）
-      sendExperimentEmail(null, null);
-      console.log('实验完成！数据条数:', jsPsych.data.get().count());
+      state.inactivityActive = false;
+      clearInactivityTimer();
     }
   });
 
@@ -1474,10 +1397,30 @@ async function startExperiment() {
 }
 
 // ============================================================
-// 16. 页面加载：先加载模型再显示开始按钮
+// 22. 页面加载：检查实验状态 → 加载模型 → 初始化 EmailJS
 // ============================================================
 window.addEventListener('load', async () => {
   const status = document.getElementById('loadingStatus');
+
+  // 检查实验是否已关闭
+  const expStatus = await jsonbinGet();
+  if (!expStatus.open || expStatus.count >= MAX_PARTICIPANTS) {
+    document.getElementById('loadingScreen').style.display = 'none';
+    document.getElementById('closedScreen').classList.add('visible');
+    return;
+  }
+
+  // 初始化 EmailJS（页面加载时即完成，避免发送时失败）
+  try {
+    if (EMAILJS_PUBLIC_KEY && EMAILJS_PUBLIC_KEY!=='YOUR_PUBLIC_KEY') {
+      emailjs.init(EMAILJS_PUBLIC_KEY);
+      console.log('✅ EmailJS 初始化完成');
+    } else {
+      console.warn('⚠ EmailJS Public Key 未填写，邮件功能不可用');
+    }
+  } catch(e) { console.warn('EmailJS 初始化失败:', e); }
+
+  // 加载面部检测模型
   try {
     status.textContent = '正在加载人脸检测模型 (1/2)...';
     await faceapi.nets.tinyFaceDetector.loadFromUri('./models');
