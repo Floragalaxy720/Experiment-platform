@@ -150,9 +150,15 @@
   <h3>🔧 研究者管理面板</h3>
   <div class="stat">当前参与人数：<strong id="adminCount">--</strong> / 60</div>
   <div class="stat">实验状态：<strong id="adminStatus">--</strong></div>
+  <div class="stat" style="font-size:12px;color:#666;margin-top:4px">
+    实时数据在 jsonbin.io 查看（需登录）
+  </div>
   <hr class="section">
   <button class="admin-btn btn-toggle-open" onclick="adminToggle(true)">🟢 开启实验</button>
   <button class="admin-btn btn-toggle-close" onclick="adminToggle(false)">🔴 关闭实验</button>
+  <br>
+  <button class="admin-btn" style="background:#3498db;color:white;"
+    onclick="window.open('https://jsonbin.io','_blank')">📊 打开 JSONBin 查看数据</button>
   <br>
   <button class="admin-btn btn-panel-close" onclick="document.getElementById('adminPanel').style.display='none'">关闭面板</button>
 </div>
@@ -228,7 +234,10 @@
 <div id="invalidScreen">
   <div class="end-box">
     <h2 style="color:#e74c3c;">⚠ 数据无效</h2>
-    <p>检测到您在任务期间长时间未进行按键操作。<br>根据实验规程，本次数据无法纳入分析。<br><br>感谢您的参与，如有疑问请联系研究者。</p>
+    <p>检测到您在任务期间长时间未进行按键操作（共触发 3 次提醒）。<br>
+    根据实验规程，本次数据无法纳入分析。<br><br>
+    如需重新参与，请<strong>刷新页面</strong>从头开始。<br>
+    如有疑问请联系研究者。</p>
   </div>
 </div>
 
@@ -240,9 +249,9 @@
 //   1. 去 emailjs.com 注册，创建 Gmail service（先修复 412 scope 问题）
 //   2. 创建模板，模板正文中放 {{message}}，主题可用 {{subject}}
 //   3. 将 Public Key / Service ID / Template ID 填入下方
-const EMAILJS_PUBLIC_KEY  = 'aNnlbqo6uJrfk753w';   // Account → API Keys → Public Key
-const EMAILJS_SERVICE_ID  = 'service_5o4esar';   // Email Services 页面的 Service ID
-const EMAILJS_TEMPLATE_ID = 'template_pg12s7f';  // Email Templates 页面的 Template ID
+const EMAILJS_PUBLIC_KEY  = 'YOUR_PUBLIC_KEY';   // Account → API Keys → Public Key
+const EMAILJS_SERVICE_ID  = 'YOUR_SERVICE_ID';   // Email Services 页面的 Service ID
+const EMAILJS_TEMPLATE_ID = 'YOUR_TEMPLATE_ID';  // Email Templates 页面的 Template ID
 
 // JSONBin 参与人数统计（可选，不填则跳过）：
 //   1. 注册 jsonbin.io (免费)
@@ -326,6 +335,9 @@ const state = {
   // 研究者模式
   researcherBypass: false,
   isTestMode: false,
+
+  // 当前 trial 是否已有第一次按键（防止同一窗口内重复按键干扰不活跃检测）
+  trialHasResponse: false,
 
   // 完成
   completionCode: null,
@@ -703,11 +715,9 @@ function showResearcherModal() {
       state.isTestMode       = true;
       state.inactivityActive = false;
       clearInactivityTimer();
-      // 延迟执行，确保 modal DOM 完全移除后再结束 trial
-      setTimeout(() => {
-        try { jsPsych.finishTrial({ researcher_skip: true }); }
-        catch(ex) { console.warn('finishTrial error:', ex); }
-      }, 60);
+      // ★ 不再调用 jsPsych.finishTrial()
+      // 当前 trial 自然结束后，所有后续 trial 均通过 conditional_function 跳过，
+      // 直到遇到下一个 makeInstruction（其 on_start 将 researcherBypass 重置为 false）
     } else {
       errMsg.style.display = 'block';
       input.value = '';
@@ -727,8 +737,15 @@ function showResearcherModal() {
 document.addEventListener('keydown', e => {
   if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
 
-  // 任意按键：重置不活跃计时器
-  if (state.inactivityActive && !state.paused) resetInactivityTimer();
+  // F / J 按键：只有该 trial 内第一次按键才重置不活跃计时器并记标志
+  if ((e.key==='f'||e.key==='j'||e.key==='F'||e.key==='J') && state.inactivityActive && !state.paused) {
+    if (!state.trialHasResponse) {
+      state.trialHasResponse = true;
+      resetInactivityTimer();
+    }
+    // 第二次及以后按键：静默忽略（jsPsych 本身也只记第一次）
+    return;
+  }
 
   // Esc：暂停
   if (e.key==='Escape' && !state.paused && !state.researcherBypass) {
@@ -1074,8 +1091,17 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
   sequence.forEach((letter, i) => {
     const isWarmup = i < nBack;
 
+    // ── 所有 trial 用 conditional_function 包裹 ──────────────────
+    // jsPsych 7 原生机制：conditional_function 在 trial 启动前检查，
+    // 返回 false 则完全跳过该 trial（不触发 on_start/on_load/on_finish）。
+    // 这是比 finishTrial() 更可靠的跳过方式，避免插件内部状态冲突。
+    const wrap = trial => ({
+      timeline: [trial],
+      conditional_function: () => !state.researcherBypass
+    });
+
     // 注视点
-    trials.push({
+    trials.push(wrap({
       type: jsPsychHtmlKeyboardResponse,
       stimulus: '<div class="fixation">+</div>',
       choices: 'NO_KEYS',
@@ -1087,21 +1113,15 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
         document.getElementById('keyHint').style.display = 'block';
         document.getElementById('ringLegend').style.display = 'block';
       },
-      on_load: function() {
-        // on_load 内跳过：trial 已完全初始化，finishTrial() 安全可调
-        if (state.researcherBypass) {
-          setTimeout(() => { try { jsPsych.finishTrial({skipped:true}); } catch(e){} }, 10);
-        }
-      },
       data: {phase:blockName, trial_type_custom:'fixation'}
-    });
+    }));
 
     // 字母刺激
     const noActionHint = isWarmup
       ? `<div class="no-action-hint">第 ${i+1} 个字母 — 无需作答，请先记住</div>`
       : '';
 
-    trials.push({
+    trials.push(wrap({
       type: jsPsychHtmlKeyboardResponse,
       stimulus: () => `
         <div class="letter-display">${letter}</div>
@@ -1114,22 +1134,16 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
       stimulus_duration: STIM_DURATION,
       response_ends_trial: false,
       on_start: function() {
+        state.trialHasResponse = false;   // 每个 trial 开始时重置，确保只记第一次按键
         if (!isWarmup) {
           state.inactivityActive = true;
           startInactivityTimer();
         }
       },
-      on_load: function() {
-        if (state.researcherBypass) {
-          state.inactivityActive = false;
-          clearInactivityTimer();
-          setTimeout(() => { try { jsPsych.finishTrial({skipped:true}); } catch(e){} }, 10);
-        }
-      },
       on_finish: function(data) {
         state.inactivityActive = false;
+        state.trialHasResponse = false;
         clearInactivityTimer();
-        if (data.skipped) return;
 
         const responded = data.response!==null;
         const correct = (isTarget[i]&&data.response==='j')||(!isTarget[i]&&data.response==='f');
@@ -1183,11 +1197,11 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
           }
         }
       }
-    });
+    }));
 
     // 热身即时反馈
-    if (showFeedback && i >= nBack) {
-      trials.push({
+    if (showFeedback) {
+      trials.push(wrap({
         type: jsPsychHtmlKeyboardResponse,
         stimulus: () => {
           const last = jsPsych.data.get().last(1).values()[0];
@@ -1196,13 +1210,8 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
         },
         choices: 'NO_KEYS',
         trial_duration: 500,
-        on_load: function() {
-          if (state.researcherBypass) {
-            setTimeout(() => { try { jsPsych.finishTrial({skipped:true}); } catch(e){} }, 10);
-          }
-        },
         data: {phase:blockName, trial_type_custom:'feedback'}
-      });
+      }));
     }
   });
   return trials;
@@ -1226,9 +1235,10 @@ function makeInstruction(html) {
       <p style="text-align:center;font-size:14px;color:#555;margin-top:18px">按 <b>空格键</b> 继续</p></div>`,
     choices: [' '],
     on_start: function() {
-      // 研究者绕过在指导语处停止
-      state.researcherBypass = false;
+      state.researcherBypass = false;   // 研究者绕过在指导语处停止
       state.inactivityActive = false;
+      state.trialHasResponse = false;
+      state.warningCount     = 0;       // 每个新阶段重置警告计数
       clearInactivityTimer();
       document.getElementById('keyHint').style.display = 'none';
       document.getElementById('ringLegend').style.display = 'none';
@@ -1237,52 +1247,50 @@ function makeInstruction(html) {
 }
 
 function makeCountdownRest(seconds, label) {
+  // conditional_function: 研究者绕过时整个 trial 被跳过
   return {
-    type: jsPsychHtmlKeyboardResponse,
-    stimulus: `<div class="instruction-box" style="text-align:center">
-      <h2>🕐 ${label}</h2>
-      <p>请<strong>闭眼休息</strong>，放松面部和颈部肌肉。</p>
-      <div id="countdownDisplay" style="font-size:64px;color:#f39c12;margin:20px 0">${seconds}</div>
-      <p style="color:#666;font-size:14px">倒计时结束后自动继续 &nbsp;|&nbsp; 或按 <b>空格键</b> 提前继续</p>
-    </div>`,
-    choices: [' '],
-    trial_duration: seconds*1000,
-    on_start: function() {
-      state.currentBlock = 'rest';
-      state.inactivityActive = false;
-      clearInactivityTimer();
-      document.getElementById('keyHint').style.display = 'none';
-      document.getElementById('ringLegend').style.display = 'none';
-    },
-    on_load: function() {
-      if (state.researcherBypass) {
-        setTimeout(() => { try { jsPsych.finishTrial({skipped:true}); } catch(e){} }, 10);
-        return;
+    timeline: [{
+      type: jsPsychHtmlKeyboardResponse,
+      stimulus: `<div class="instruction-box" style="text-align:center">
+        <h2>🕐 ${label}</h2>
+        <p>请<strong>闭眼休息</strong>，放松面部和颈部肌肉。</p>
+        <div id="countdownDisplay" style="font-size:64px;color:#f39c12;margin:20px 0">${seconds}</div>
+        <p style="color:#666;font-size:14px">倒计时结束后自动继续 &nbsp;|&nbsp; 或按 <b>空格键</b> 提前继续</p>
+      </div>`,
+      choices: [' '],
+      trial_duration: seconds*1000,
+      on_start: function() {
+        state.currentBlock = 'rest';
+        state.inactivityActive = false;
+        clearInactivityTimer();
+        document.getElementById('keyHint').style.display = 'none';
+        document.getElementById('ringLegend').style.display = 'none';
+      },
+      on_load: function() {
+        let rem = seconds;
+        const iv = setInterval(() => {
+          rem--;
+          const el = document.getElementById('countdownDisplay');
+          if (el) el.textContent = Math.max(rem,0);
+          if (rem<=0) clearInterval(iv);
+        },1000);
       }
-      let rem = seconds;
-      const iv = setInterval(() => {
-        rem--;
-        const el = document.getElementById('countdownDisplay');
-        if (el) el.textContent = Math.max(rem,0);
-        if (rem<=0) clearInterval(iv);
-      },1000);
-    }
+    }],
+    conditional_function: () => !state.researcherBypass
   };
 }
 
 function makeTrigger(label, fn, ms=600) {
+  // conditional_function: 研究者绕过时跳过，fn() 不被调用
   return {
-    type: jsPsychHtmlKeyboardResponse,
-    stimulus: `<div style="margin-top:200px;color:#333;font-size:14px">${label}</div>`,
-    choices: 'NO_KEYS',
-    trial_duration: ms,
-    on_load: function() {
-      if (state.researcherBypass) {
-        setTimeout(() => { try { jsPsych.finishTrial({skipped:true}); } catch(e){} }, 10);
-        return;
-      }
-      fn();
-    }
+    timeline: [{
+      type: jsPsychHtmlKeyboardResponse,
+      stimulus: `<div style="margin-top:200px;color:#333;font-size:14px">${label}</div>`,
+      choices: 'NO_KEYS',
+      trial_duration: ms,
+      on_start: function() { fn(); }
+    }],
+    conditional_function: () => !state.researcherBypass
   };
 }
 
