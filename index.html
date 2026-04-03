@@ -1186,7 +1186,7 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
     });
 
     // 热身即时反馈
-    if (showFeedback) {
+    if (showFeedback && !isWarmup) {
       trials.push({
         type: jsPsychHtmlKeyboardResponse,
         stimulus: () => {
