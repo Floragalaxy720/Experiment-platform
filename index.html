@@ -280,12 +280,29 @@ const state = {
   video: null,
 
   // 眨眼（原始 + EMA 平滑）
-  EAR_THRESHOLD: 0.21,
+  EAR_THRESHOLD: 0.21,        // 初始值，热身后被自适应阈值覆盖
+  EAR_THRESHOLD_ADAPTED: false, // 是否已完成自适应标定
   EAR_CONSEC: 2,
   earBelowCount: 0,
   blinkTimestamps: [],
   blinkRate: 0,
   emaBlinkRate: null,
+
+  // 自适应阈值标定（热身期间采集）
+  // 论文说明：为适应个体眼型差异，EAR 检测阈值在热身阶段自动标定。
+  //   采集热身期全部 EAR 样本，计算均值 μ 和标准差 σ，
+  //   阈值设为 μ − 2σ（限定在 [0.18, 0.28] 内）。
+  //   该方法使阈值对应"距个人平均开眼状态 2 个标准差以下"，
+  //   适应眼睛大小和摄像头角度的个体差异。
+  earSamples: [],               // 热身期间收集的 EAR 帧值
+  earCalibMean: null,           // 标定均值
+  earCalibStd:  null,           // 标定标准差
+
+  // per-trial EAR 记录（用于离线重新标定）
+  // 每个 stimulus trial 记录该窗口内观测到的最低 EAR 值，
+  // 发邮件时以紧凑格式输出，允许研究者事后用任意阈值重新判断眨眼。
+  currentTrialMinEAR: 1.0,      // 当前 trial 期间最低 EAR（trial 开始时重置）
+  trialEARLog: [],              // [{phase, trial, minEAR}]，逐 trial 记录
 
   // 头部姿态（原始 + EMA 平滑）
   headYaw: 0,
@@ -428,6 +445,16 @@ function startDetectionLoop() {
         const lm = det.landmarks.positions;
         const ear = (calcEAR([lm[36],lm[37],lm[38],lm[39],lm[40],lm[41]]) +
                      calcEAR([lm[42],lm[43],lm[44],lm[45],lm[46],lm[47]])) / 2;
+
+        // ── 热身阶段采集 EAR 样本（用于自适应阈值标定）──────────
+        if (state.currentBlock === '热身(1-back)') {
+          state.earSamples.push(ear);
+        }
+
+        // ── per-trial 最低 EAR 追踪（离线重标定用）───────────────
+        if (ear < state.currentTrialMinEAR) state.currentTrialMinEAR = ear;
+
+        // ── 眨眼检测（使用当前自适应阈值）───────────────────────
         if (ear < state.EAR_THRESHOLD) {
           state.earBelowCount++;
         } else {
@@ -437,6 +464,8 @@ function startDetectionLoop() {
         const now = Date.now();
         state.blinkTimestamps = state.blinkTimestamps.filter(t=>now-t<60000);
         state.blinkRate = state.blinkTimestamps.length;
+
+        // ── 头部姿态 ────────────────────────────────────────────
         const nose=lm[30], lO=lm[36], rO=lm[45];
         const fw=Math.abs(rO.x-lO.x), fh=det.detection.box.height;
         state.headYaw   = fw>5 ? (nose.x-(lO.x+rO.x)/2)/(fw/2) : 0;
@@ -448,6 +477,26 @@ function startDetectionLoop() {
     requestAnimationFrame(detect);
   }
   detect();
+}
+
+// ── 热身结束后调用：计算自适应 EAR 阈值 ─────────────────────────
+// 公式：threshold = μ_EAR − 2 × σ_EAR，限定在 [0.18, 0.28]
+// 直觉解释：正常睁眼时 EAR 分布在均值附近，眨眼时 EAR 会
+//   骤降超过 2 个标准差，该阈值对每个人的眼型自动校准。
+function calibrateEARThreshold() {
+  const samples = state.earSamples;
+  if (samples.length < 30) {
+    console.warn(`EAR 样本不足（${samples.length} 帧），保留默认阈值 ${state.EAR_THRESHOLD}`);
+    return;
+  }
+  const mu  = arrMean(samples);
+  const sig = arrStd(samples);
+  const newThreshold = Math.min(0.28, Math.max(0.18, mu - 2 * sig));
+  state.earCalibMean = +mu.toFixed(4);
+  state.earCalibStd  = +sig.toFixed(4);
+  state.EAR_THRESHOLD = +newThreshold.toFixed(4);
+  state.EAR_THRESHOLD_ADAPTED = true;
+  console.log(`EAR 自适应标定完成：μ=${mu.toFixed(3)}, σ=${sig.toFixed(3)}, 新阈值=${newThreshold.toFixed(3)}`);
 }
 
 function updateEMA() {
@@ -912,6 +961,20 @@ function buildBehaviorBody() {
 专属码: ${state.completionCode||'N/A'}  |  时间: ${now}
 ABC顺序: ${BLOCK_ABC_ORDER.join('-')}
 
+--- 眨眼检测标定（自适应阈值）---
+摄像头可用: ${state.cameraReady ? '是' : '否（眨眼数据缺失）'}
+EAR 标定完成: ${state.EAR_THRESHOLD_ADAPTED ? '是' : '否（使用默认阈值）'}
+标定均值 μ_EAR: ${state.earCalibMean!=null ? state.earCalibMean : 'N/A'}
+标定标准差 σ_EAR: ${state.earCalibStd!=null ? state.earCalibStd : 'N/A'}
+最终使用阈值: ${state.EAR_THRESHOLD} （${state.EAR_THRESHOLD_ADAPTED ? '自适应' : '默认'}）
+热身 EAR 样本数: ${state.earSamples.length} 帧
+
+--- per-trial 最低 EAR（离线重标定用）---
+格式：阶段|trial序号|minEAR
+${state.trialEARLog.length > 0
+  ? state.trialEARLog.map(e=>`${e.phase}|${e.trial}|${e.minEAR}`).join('\n')
+  : '无数据（摄像头未检测到面部）'}
+
 --- 数据预处理 ---
 眨眼频率: EMA在线平滑 α=${EMA_ALPHA_BLINK}（公式: ŝₜ=α·sₜ+(1-α)·ŝₜ₋₁）
 头部运动: EMA在线平滑 α=${EMA_ALPHA_HEAD}
@@ -1134,7 +1197,8 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
       stimulus_duration: STIM_DURATION,
       response_ends_trial: false,
       on_start: function() {
-        state.trialHasResponse = false;   // 每个 trial 开始时重置，确保只记第一次按键
+        state.trialHasResponse = false;
+        state.currentTrialMinEAR = 1.0;   // 重置 per-trial 最低 EAR
         if (!isWarmup) {
           state.inactivityActive = true;
           startInactivityTimer();
@@ -1144,6 +1208,13 @@ function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
         state.inactivityActive = false;
         state.trialHasResponse = false;
         clearInactivityTimer();
+
+        // 记录 per-trial 最低 EAR（离线重标定用）
+        const minEAR = state.currentTrialMinEAR < 1.0 ? +state.currentTrialMinEAR.toFixed(3) : null;
+        data.min_ear = minEAR;
+        if (minEAR !== null) {
+          state.trialEARLog.push({ phase: blockName, trial: i, minEAR });
+        }
 
         const responded = data.response!==null;
         const correct = (isTarget[i]&&data.response==='j')||(!isTarget[i]&&data.response==='f');
@@ -1294,7 +1365,8 @@ function makeTrigger(label, fn, ms=600) {
   };
 }
 
-const baselineTrigger    = makeTrigger('正在校准个体基线...', computeBaseline);
+const baselineTrigger      = makeTrigger('正在校准个体基线...', computeBaseline);
+const earCalibTrigger      = makeTrigger('正在标定眼动阈值...', calibrateEARThreshold, 500);
 const weightsUpdateTrigger = makeTrigger('正在整合信号权重...', computeAndUpdateWeights, 400);
 
 function makeDirectionTrigger(blockName) {
@@ -1355,6 +1427,55 @@ let jsPsych;
 function buildTimeline() {
   const tl = [];
 
+  // ── 摄像头自检页（在所有指导语之前）──────────────────────────
+  // 让被试确认摄像头画面中能清晰看到自己的眼睛，
+  // 同时系统检测是否已有有效 EAR 帧，不满足条件则提示调整。
+  tl.push({
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: `
+      <div class="instruction-box" style="text-align:center;">
+        <h2>📷 摄像头自检</h2>
+        <p>实验需要通过摄像头检测你的<strong>眨眼</strong>和<strong>头部姿态</strong>。</p>
+        <p style="margin-top:10px;">请查看右上角摄像头小窗，确认：</p>
+        <div class="highlight-box" style="text-align:left;margin:14px 0;">
+          ✅ 能清晰看到你的<strong>完整面部</strong>（尤其是眼睛）<br>
+          ✅ 光线充足，脸部不过亮或过暗<br>
+          ✅ 头部正对摄像头，不过度偏侧<br>
+          ✅ 如戴眼镜，请确认镜片无严重反光
+        </div>
+        <p style="color:#f39c12;font-size:14px;">
+          ⚠ 若小窗中看不清眼睛，请调整光线或坐姿后再继续。<br>
+          摄像头检测失效会影响眨眼信号的准确性。
+        </p>
+        <p id="earCheckMsg" style="color:#888;font-size:13px;margin-top:10px;">
+          正在检测摄像头信号...
+        </p>
+        <p style="text-align:center;font-size:14px;color:#555;margin-top:18px">
+          确认无误后按 <b>空格键</b> 继续
+        </p>
+      </div>`,
+    choices: [' '],
+    on_start: function() {
+      state.inactivityActive = false;
+      state.warningCount = 0;
+      clearInactivityTimer();
+      document.getElementById('keyHint').style.display = 'none';
+      document.getElementById('ringLegend').style.display = 'none';
+      // 延迟1秒后检查 EAR 是否有效
+      setTimeout(() => {
+        const msg = document.getElementById('earCheckMsg');
+        if (!msg) return;
+        if (!state.cameraReady) {
+          msg.style.color = '#e74c3c';
+          msg.textContent = '⚠ 摄像头未连接，将跳过眨眼检测（其余数据正常收集）';
+        } else {
+          msg.style.color = '#2ecc71';
+          msg.textContent = '✅ 摄像头信号正常，可以继续';
+        }
+      }, 1000);
+    }
+  });
+
   // 全局指导语
   tl.push(makeInstruction(`
     <h2>欢迎参加本实验</h2>
@@ -1385,8 +1506,11 @@ function buildTimeline() {
     </div>
     <p>💡 <strong>第1个字母出现时无需作答</strong>（还没有"上一个"可比较），从第2个字母开始作答。</p>
     <p>本阶段有即时正误反馈，热身数据不计入分析。</p>
+    <p style="font-size:13px;color:#888;">🔍 系统将在此阶段自动标定你的个人眨眼检测参数。</p>
   `));
   tl.push(...createNBackBlock(sequences.warmup, '热身(1-back)', true, 1));
+  // 热身结束后立即标定 EAR 阈值
+  tl.push(earCalibTrigger);
 
   // 2-back 说明
   tl.push(makeInstruction(`
