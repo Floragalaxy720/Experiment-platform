@@ -1,12 +1,1662 @@
 <!DOCTYPE html>
 <html lang="zh">
-<head><meta charset="UTF-8"><title>实验已结束</title>
-<style>body{background:#1a1a2e;color:white;display:flex;align-items:center;justify-content:center;height:100vh;font-family:Arial;text-align:center;}</style>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>N-back 认知实验</title>
+  <script src="jspsych.js"></script>
+  <link href="jspsych.css" rel="stylesheet" />
+  <script src="plugin-html-keyboard-response.js"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-survey-html-form@1.0.3/dist/index.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { text-align: center; font-family: Arial, sans-serif; background: #1a1a2e; color: white; }
+    #jspsych-target { min-height: 100vh; }
+
+    .letter-display { font-size: 120px; font-family: monospace; font-weight: bold; color: #e0e0ff; line-height: 1; margin-top: 40px; }
+    .instruction-box { max-width: 640px; margin: 30px auto; font-size: 17px; line-height: 1.85; background: #16213e; padding: 36px 44px; border-radius: 12px; text-align: left; }
+    .instruction-box h2 { text-align: center; margin-top: 0; margin-bottom: 16px; }
+    .highlight-box { background: #0d1b2a; padding: 12px 18px; border-radius: 8px; text-align: center; margin: 10px 0; }
+    .task-box { background: #0a2a1a; border: 1px solid #2ecc71; padding: 12px 18px; border-radius: 8px; margin: 12px 0; }
+    .phase-label { font-size: 13px; color: #555; margin-top: 8px; }
+    .no-action-hint { font-size: 14px; color: #f39c12; margin-top: 10px; padding: 5px 16px; background: rgba(243,156,18,0.08); border: 1px solid rgba(243,156,18,0.25); border-radius: 6px; display: inline-block; }
+
+    /* 能量环 */
+    #energyRing { width: 110px; height: 110px; border-radius: 50%; border: 12px solid #333; margin: 12px auto 0; transition: border-color 0.5s; }
+
+    /* 摄像头 */
+    #cameraContainer { position: fixed; top: 10px; right: 10px; z-index: 1000; display: none; }
+    #camVideo { width: 140px; border-radius: 8px; opacity: 0.75; display: block; }
+    #camStatus { font-size: 11px; color: #777; text-align: center; margin-top: 3px; }
+
+    /* 底部提示 */
+    #keyHint { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 7px 24px; font-size: 14px; color: #999; display: none; z-index: 997; white-space: nowrap; }
+    #keyHint b { color: #ddd; }
+
+    /* 信号环图例 */
+    #ringLegend { position: fixed; bottom: 16px; right: 16px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 14px; font-size: 12px; color: #888; display: none; z-index: 997; line-height: 1.8; text-align: left; }
+    .ring-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+
+    /* 暂停遮罩 */
+    #pauseOverlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.88); z-index: 2000; align-items: center; justify-content: center; flex-direction: column; }
+    #pauseOverlay.visible { display: flex; }
+    #pauseOverlay h2 { font-size: 32px; margin-bottom: 16px; }
+    #pauseOverlay p { font-size: 18px; color: #aaa; }
+
+    /* 不活跃警告 */
+    #inactivityWarning { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: #2a1500; border: 2px solid #f39c12; border-radius: 12px; padding: 24px 36px; z-index: 3500; text-align: center; min-width: 280px; }
+    #inactivityWarning h3 { color: #f39c12; font-size: 20px; margin-bottom: 8px; }
+    #inactivityWarning p { color: #ccc; font-size: 15px; }
+
+    /* 管理员面板 */
+    #adminPanel { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: #16213e; border: 2px solid #3498db; border-radius: 12px; padding: 28px 36px; z-index: 5000; text-align: center; min-width: 320px; }
+    #adminPanel h3 { color: #3498db; margin-bottom: 18px; font-size: 20px; }
+    #adminPanel .stat { font-size: 16px; margin: 8px 0; color: #ccc; }
+    #adminPanel .stat strong { color: white; }
+    .admin-btn { margin: 8px 4px; padding: 9px 22px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; }
+    .btn-toggle-open { background: #2ecc71; color: #1a1a2e; }
+    .btn-toggle-close { background: #e74c3c; color: white; }
+    .btn-panel-close { background: #555; color: #ccc; }
+
+    /* 加载页 */
+    #loadingScreen { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #1a1a2e; z-index: 3000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    #loadingScreen h2 { font-size: 24px; margin-bottom: 20px; }
+    #loadingStatus { font-size: 16px; color: #888; margin-bottom: 30px; }
+    #startBtn { display: none; padding: 14px 44px; font-size: 18px; background: #3498db; color: white; border: none; border-radius: 8px; cursor: pointer; }
+    #startBtn:hover { background: #2980b9; }
+
+    /* 完成页 */
+    #completionScreen { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #1a1a2e; z-index: 2500; overflow-y: auto; padding: 40px 16px; }
+    #completionScreen.visible { display: block; }
+    .completion-box { background: #16213e; border-radius: 16px; padding: 40px; max-width: 540px; margin: 0 auto; }
+    .code-display { font-size: 36px; font-family: monospace; letter-spacing: 4px; color: #f39c12; background: rgba(243,156,18,0.1); border: 2px solid #f39c12; border-radius: 8px; padding: 12px 24px; margin: 12px 0; display: inline-block; }
+    .form-section { text-align: left; margin-top: 20px; }
+    .form-row { margin-bottom: 18px; }
+    .form-row > label { display: block; font-size: 15px; color: #ccc; margin-bottom: 7px; font-weight: bold; }
+    .form-row input[type=text], .form-row input[type=number] { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid #444; background: #0d1b2a; color: white; font-size: 15px; }
+    .form-row input[type=text]:focus, .form-row input[type=number]:focus { outline: 2px solid #3498db; }
+    .radio-group { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 4px; }
+    .radio-group label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 14px; color: #ccc; font-weight: normal; }
+    .radio-group input[type=radio] { accent-color: #3498db; width: 15px; height: 15px; }
+    .field-note { font-size: 12px; color: #666; font-weight: normal; }
+    #submitFormBtn { width: 100%; padding: 13px; background: #3498db; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; margin-top: 6px; }
+    #submitFormBtn:hover { background: #2980b9; }
+    #submitFormBtn:disabled { background: #555; cursor: default; }
+    .privacy-note { font-size: 12px; color: #555; margin-top: 14px; line-height: 1.7; }
+
+    /* 关闭页 / 无效页 */
+    #closedScreen, #invalidScreen { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #1a1a2e; z-index: 4000; align-items: center; justify-content: center; }
+    #closedScreen.visible, #invalidScreen.visible { display: flex; }
+    .end-box { text-align: center; padding: 40px; max-width: 480px; }
+    .end-box h2 { font-size: 30px; margin-bottom: 16px; }
+    .end-box p { font-size: 17px; color: #aaa; line-height: 1.8; }
+
+    /* NASA-TLX */
+    .tlx-item { margin-bottom: 20px; background: #0d1b2a; padding: 14px 18px; border-radius: 8px; }
+    .tlx-item label { font-size: 15px; display: block; margin-bottom: 6px; color: #ccc; }
+    .tlx-desc { font-size: 12px; color: #666; margin-bottom: 8px; display: block; }
+    .slider-row { display: flex; align-items: center; gap: 10px; }
+    .slider-row input[type=range] { flex: 1; accent-color: #3498db; }
+    .slider-row span { font-size: 12px; color: #888; min-width: 20px; }
+    .slider-val { font-size: 13px; color: #f39c12; text-align: right; margin-top: 4px; }
+
+    .fixation { font-size: 60px; margin-top: 80px; color: #555; }
+    hr.section { border-color: #2a2a4a; margin: 16px 0; }
+  </style>
 </head>
 <body>
-  <div>
-    <h2>🔒 实验招募已结束</h2>
-    <p style="color:#aaa;margin-top:12px">参与人数已满额，感谢您的关注！</p>
+
+<!-- 加载页 -->
+<div id="loadingScreen">
+  <h2>⏳ 正在加载实验资源...</h2>
+  <div id="loadingStatus">初始化中...</div>
+  <button id="startBtn" onclick="startExperiment()">▶ 开始实验</button>
+</div>
+
+<!-- 摄像头 -->
+<div id="cameraContainer">
+  <video id="camVideo" autoplay muted playsinline></video>
+  <div id="camStatus">● 摄像头运行中</div>
+</div>
+
+<!-- 按键提示 -->
+<div id="keyHint">
+  <b>F</b> 不匹配 &nbsp;|&nbsp; <b>J</b> 匹配 &nbsp;|&nbsp; <b>Esc</b> 暂停
+</div>
+
+<!-- 信号环图例 -->
+<div id="ringLegend">
+  <span class="ring-dot" style="background:#2ecc71"></span>绿色：偏离小，状态稳定<br>
+  <span class="ring-dot" style="background:#f39c12"></span>黄色：偏离中等<br>
+  <span class="ring-dot" style="background:#e74c3c"></span>红色：偏离较大
+</div>
+
+<!-- 暂停遮罩 -->
+<div id="pauseOverlay">
+  <h2>⏸ 实验已暂停</h2>
+  <p>准备好后，按 <b>空格键</b> 继续</p>
+</div>
+
+<!-- 不活跃警告 -->
+<div id="inactivityWarning">
+  <h3>⚠ 请操作键盘</h3>
+  <p id="inactivityMsg">请按 <b>F</b> 或 <b>J</b> 键作答</p>
+</div>
+
+<!-- 管理员面板 -->
+<div id="adminPanel">
+  <h3>🔧 研究者管理面板</h3>
+  <div class="stat">当前参与人数：<strong id="adminCount">--</strong> / 60</div>
+  <div class="stat">实验状态：<strong id="adminStatus">--</strong></div>
+  <div class="stat" style="font-size:12px;color:#666;margin-top:4px">
+    实时数据在 jsonbin.io 查看（需登录）
   </div>
+  <hr class="section">
+  <button class="admin-btn btn-toggle-open" onclick="adminToggle(true)">🟢 开启实验</button>
+  <button class="admin-btn btn-toggle-close" onclick="adminToggle(false)">🔴 关闭实验</button>
+  <br>
+  <button class="admin-btn" style="background:#3498db;color:white;"
+    onclick="window.open('https://jsonbin.io','_blank')">📊 打开 JSONBin 查看数据</button>
+  <br>
+  <button class="admin-btn btn-panel-close" onclick="document.getElementById('adminPanel').style.display='none'">关闭面板</button>
+</div>
+
+<!-- jsPsych 容器 -->
+<div id="jspsych-target"></div>
+
+<!-- 完成页 -->
+<div id="completionScreen">
+  <div class="completion-box">
+    <h2>🎉 实验已完成！</h2>
+    <p style="text-align:center;color:#aaa;margin-bottom:4px">感谢你的认真参与，数据已成功记录。</p>
+    <hr class="section">
+    <p style="text-align:center;font-size:15px">你的<strong>专属码</strong>（请截图保存）：</p>
+    <div style="text-align:center;margin:8px 0 4px"><div class="code-display" id="codeDisplay">----</div></div>
+    <hr class="section">
+    <div class="form-section">
+      <p style="font-size:15px;margin-bottom:18px;color:#ccc">请填写以下信息后提交，约1分钟。</p>
+
+      <div class="form-row">
+        <label>性别</label>
+        <div class="radio-group">
+          <label><input type="radio" name="gender" value="male"> 男</label>
+          <label><input type="radio" name="gender" value="female"> 女</label>
+          <label><input type="radio" name="gender" value="other"> 其他</label>
+          <label><input type="radio" name="gender" value="prefer_not"> 不愿透露</label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label>年龄</label>
+        <input type="number" id="ageInput" min="16" max="80" placeholder="请输入年龄（岁）">
+      </div>
+
+      <div class="form-row">
+        <label>
+          奖励选择
+          <span class="field-note">（奖励将由研究者通过微信联系您发放）</span>
+        </label>
+        <div class="radio-group">
+          <label><input type="radio" name="reward" value="cash"> 💰 10元红包</label>
+          <label><input type="radio" name="reward" value="gift"> 🎁 纪念品盲盒</label>
+          <label><input type="radio" name="reward" value="none"> 不需要奖励</label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label>
+          联系方式（微信号或手机号）
+          <span class="field-note"> — 如不领取奖励可不填</span>
+        </label>
+        <input type="text" id="contactInput" placeholder="请输入微信号或手机号">
+      </div>
+
+      <button id="submitFormBtn" onclick="submitParticipantForm()">提交并完成实验</button>
+      <p id="formConfirm" style="display:none;color:#2ecc71;text-align:center;margin-top:12px;font-size:15px"></p>
+      <div class="privacy-note">
+        🔒 隐私说明：联系方式仅用于发放奖励，与行为数据分开存储，不会关联您的身份信息。本实验遵循匿名原则，您可随时退出。
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 实验关闭页 -->
+<div id="closedScreen">
+  <div class="end-box">
+    <h2>🔒 实验招募已结束</h2>
+    <p>参与人数已满额，感谢您的支持与关注！</p>
+  </div>
+</div>
+
+<!-- 数据无效页 -->
+<div id="invalidScreen">
+  <div class="end-box">
+    <h2 style="color:#e74c3c;">⚠ 数据无效</h2>
+    <p>检测到您在任务期间长时间未进行按键操作（共触发 3 次提醒）。<br>
+    根据实验规程，本次数据无法纳入分析。<br><br>
+    如需重新参与，请<strong>刷新页面</strong>从头开始。<br>
+    如有疑问请联系研究者。</p>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// ★ 配置区 — 上线前必填
+// ============================================================
+// EmailJS 配置：
+//   1. 去 emailjs.com 注册，创建 Gmail service（先修复 412 scope 问题）
+//   2. 创建模板，模板正文中放 {{message}}，主题可用 {{subject}}
+//   3. 将 Public Key / Service ID / Template ID 填入下方
+const EMAILJS_PUBLIC_KEY  = 'aNnlbqo6uJrfk753w';   // Account → API Keys → Public Key
+const EMAILJS_SERVICE_ID  = 'service_5o4esar';   // Email Services 页面的 Service ID
+const EMAILJS_TEMPLATE_ID = 'template_bsbkw6c';  // Email Templates 页面的 Template ID
+
+// JSONBin 参与人数统计（可选，不填则跳过）：
+//   1. 注册 jsonbin.io (免费)
+//   2. 创建 Bin，初始内容：{"count":0,"open":true}
+//   3. 复制 Bin ID 和 Master Key 填入下方
+const JSONBIN_BIN_ID  = '';  // 示例: '64a1b2c3d4e5f6a7b8c9d0e1'
+const JSONBIN_API_KEY = '';  // 示例: '$2a$10$...'
+
+const MAX_PARTICIPANTS    = 60;
+const RESEARCHER_PASSWORD = '0515lhy';  // \ 键触发研究者绕过
+const ADMIN_PASSWORD      = 'admin2024'; // Ctrl+\ 触发管理面板
+
+// ============================================================
+// 0. 随机分配
+// ============================================================
+const D1_IS_TRUE = Math.random() < 0.5;
+const D2_IS_TRUE = !D1_IS_TRUE;
+// Block A/B/C 顺序被试间随机，平衡顺序效应
+const BLOCK_ABC_ORDER = ['A','B','C'].sort(() => Math.random() - 0.5);
+
+// ============================================================
+// 1. 全局状态
+// ============================================================
+const state = {
+  cameraReady: false,
+  video: null,
+
+  // 眨眼（原始 + EMA 平滑）
+  EAR_THRESHOLD: 0.21,        // 初始值，热身后被自适应阈值覆盖
+  EAR_THRESHOLD_ADAPTED: false, // 是否已完成自适应标定
+  EAR_CONSEC: 2,
+  earBelowCount: 0,
+  blinkTimestamps: [],
+  blinkRate: 0,
+  emaBlinkRate: null,
+
+  // 自适应阈值标定（热身期间采集）
+  // 论文说明：为适应个体眼型差异，EAR 检测阈值在热身阶段自动标定。
+  //   采集热身期全部 EAR 样本，计算均值 μ 和标准差 σ，
+  //   阈值设为 μ − 2σ（限定在 [0.18, 0.28] 内）。
+  //   该方法使阈值对应"距个人平均开眼状态 2 个标准差以下"，
+  //   适应眼睛大小和摄像头角度的个体差异。
+  earSamples: [],               // 热身期间收集的 EAR 帧值
+  earCalibMean: null,           // 标定均值
+  earCalibStd:  null,           // 标定标准差
+
+  // per-trial EAR 记录（用于离线重新标定）
+  // 每个 stimulus trial 记录该窗口内观测到的最低 EAR 值，
+  // 发邮件时以紧凑格式输出，允许研究者事后用任意阈值重新判断眨眼。
+  currentTrialMinEAR: 1.0,      // 当前 trial 期间最低 EAR（trial 开始时重置）
+  trialEARLog: [],              // [{phase, trial, minEAR}]，逐 trial 记录
+
+  // 头部姿态（原始 + EMA 平滑）
+  headYaw: 0,
+  headPitch: 0,
+  emaHead: null,
+
+  // 按键节律（滑动窗口，内在平滑）
+  rtHistory: [],
+  rtCV: 0,
+
+  // 能量
+  energyLevel: 50,
+  fakeEnergy: 50,
+  currentBlock: 'none',
+
+  // 基线
+  baseline: null,
+  driftBeta:      { blink: 0, head: 0, rtCV: 0 },
+  driftIntercept: { blink: 15, head: 0.1, rtCV: 0.25 },
+  driftEndTime:   null,
+  naturalBeta:    { blink: 0, head: 0, rtCV: 0 },
+
+  // 方向 & 权重
+  directionBlink: -1,
+  directionHead:  -1,
+  directionRT:    -1,
+  weights: { blink: 0.333, head: 0.333, rtCV: 0.334 },
+
+  // γ 计算
+  prevZ:      { blink: null, head: null, rtCV: null },
+  prevFusedS: null,
+  gammaLog:   { blink: [], head: [], rtCV: [], d: [] },
+  gammaBar:   { blink: 0, head: 0, rtCV: 0, d: 0 },
+
+  // 暂停
+  paused: false,
+  pauseLog: [],
+  pauseStart: null,
+
+  // 不活跃检测
+  inactivityActive: false,
+  inactivityTimer: null,
+  warningCount: 0,
+  MAX_WARNINGS: 2,
+  experimentInvalidated: false,
+
+  // 研究者模式
+  researcherBypass: false,
+  isTestMode: false,
+
+  // 当前 trial 是否已有第一次按键（防止同一窗口内重复按键干扰不活跃检测）
+  trialHasResponse: false,
+
+  // 完成
+  completionCode: null,
+  participantInfo: {},
+};
+
+// EMA 平滑系数
+// 论文说明：为降低信号噪声，眨眼频率采用 α=0.3 的 EMA（较慢信号，需较强平滑），
+//   头部运动量采用 α=0.4 的 EMA（响应更快，保留更多即时变化）。
+//   公式：ŝₜ = α·sₜ + (1−α)·ŝₜ₋₁。RT-CV 基于20试次滑动窗口计算，内在已平滑。
+const EMA_ALPHA_BLINK = 0.3;
+const EMA_ALPHA_HEAD  = 0.4;
+
+// ============================================================
+// 2. 工具函数
+// ============================================================
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function generateCode() {
+  const n = Math.floor(1000 + Math.random() * 9000);
+  const alpha = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  return `NB-${n}-${alpha[Math.floor(Math.random() * alpha.length)]}`;
+}
+
+function arrMean(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+function arrStd(arr) {
+  if (arr.length < 2) return 1;
+  const m = arrMean(arr);
+  return Math.sqrt(arr.map(x=>(x-m)**2).reduce((a,b)=>a+b,0)/arr.length);
+}
+
+function linearRegression(xs, ys) {
+  if (xs.length < 2) return { beta:0, intercept:arrMean(ys) };
+  const xm=arrMean(xs), ym=arrMean(ys);
+  let num=0, den=0;
+  for (let i=0;i<xs.length;i++) { num+=(xs[i]-xm)*(ys[i]-ym); den+=(xs[i]-xm)**2; }
+  const beta = den>1e-9 ? num/den : 0;
+  return { beta, intercept: ym-beta*xm };
+}
+
+function computeWLSGamma(entries) {
+  const valid = entries.filter(e=>isFinite(e.gammaHat)&&e.weight>0.05);
+  if (valid.length < 3) return 0;
+  const wg = valid.reduce((s,e)=>s+e.weight*e.gammaHat,0);
+  const w  = valid.reduce((s,e)=>s+e.weight,0);
+  return w>1e-9 ? wg/w : 0;
+}
+
+function calcEAR(pts) {
+  const A=Math.hypot(pts[1].x-pts[5].x,pts[1].y-pts[5].y);
+  const B=Math.hypot(pts[2].x-pts[4].x,pts[2].y-pts[4].y);
+  const C=Math.hypot(pts[0].x-pts[3].x,pts[0].y-pts[3].y);
+  return C<1 ? 1 : (A+B)/(2*C);
+}
+
+// ============================================================
+// 3. 摄像头
+// ============================================================
+async function initCamera() {
+  const video = document.getElementById('camVideo');
+  state.video = video;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video:{width:320,height:240,facingMode:'user'} });
+    video.srcObject = stream;
+    await new Promise(res => { video.onloadedmetadata = res; });
+    state.cameraReady = true;
+    document.getElementById('cameraContainer').style.display = 'block';
+    startDetectionLoop();
+    return true;
+  } catch(e) {
+    console.warn('摄像头不可用:', e);
+    document.getElementById('camStatus').textContent = '⚠ 摄像头不可用';
+    return false;
+  }
+}
+
+// ============================================================
+// 4. 面部检测循环
+// ============================================================
+function startDetectionLoop() {
+  async function detect() {
+    if (!state.cameraReady || state.paused) { requestAnimationFrame(detect); return; }
+    try {
+      const det = await faceapi
+        .detectSingleFace(state.video, new faceapi.TinyFaceDetectorOptions({inputSize:160}))
+        .withFaceLandmarks();
+      if (det) {
+        const lm = det.landmarks.positions;
+        const ear = (calcEAR([lm[36],lm[37],lm[38],lm[39],lm[40],lm[41]]) +
+                     calcEAR([lm[42],lm[43],lm[44],lm[45],lm[46],lm[47]])) / 2;
+
+        // ── 热身阶段采集 EAR 样本（用于自适应阈值标定）──────────
+        if (state.currentBlock === '热身(1-back)') {
+          state.earSamples.push(ear);
+        }
+
+        // ── per-trial 最低 EAR 追踪（离线重标定用）───────────────
+        if (ear < state.currentTrialMinEAR) state.currentTrialMinEAR = ear;
+
+        // ── 眨眼检测（使用当前自适应阈值）───────────────────────
+        if (ear < state.EAR_THRESHOLD) {
+          state.earBelowCount++;
+        } else {
+          if (state.earBelowCount >= state.EAR_CONSEC) state.blinkTimestamps.push(Date.now());
+          state.earBelowCount = 0;
+        }
+        const now = Date.now();
+        state.blinkTimestamps = state.blinkTimestamps.filter(t=>now-t<60000);
+        state.blinkRate = state.blinkTimestamps.length;
+
+        // ── 头部姿态 ────────────────────────────────────────────
+        const nose=lm[30], lO=lm[36], rO=lm[45];
+        const fw=Math.abs(rO.x-lO.x), fh=det.detection.box.height;
+        state.headYaw   = fw>5 ? (nose.x-(lO.x+rO.x)/2)/(fw/2) : 0;
+        state.headPitch = fh>5 ? (nose.y-(lO.y+rO.y)/2)/(fh/2) : 0;
+      }
+    } catch(e) {}
+    updateEMA();
+    updateEnergy();
+    requestAnimationFrame(detect);
+  }
+  detect();
+}
+
+// ── 热身结束后调用：计算自适应 EAR 阈值 ─────────────────────────
+// 公式：threshold = μ_EAR − 2 × σ_EAR，限定在 [0.18, 0.28]
+// 直觉解释：正常睁眼时 EAR 分布在均值附近，眨眼时 EAR 会
+//   骤降超过 2 个标准差，该阈值对每个人的眼型自动校准。
+function calibrateEARThreshold() {
+  const samples = state.earSamples;
+  if (samples.length < 30) {
+    console.warn(`EAR 样本不足（${samples.length} 帧），保留默认阈值 ${state.EAR_THRESHOLD}`);
+    return;
+  }
+  const mu  = arrMean(samples);
+  const sig = arrStd(samples);
+  const newThreshold = Math.min(0.28, Math.max(0.18, mu - 2 * sig));
+  state.earCalibMean = +mu.toFixed(4);
+  state.earCalibStd  = +sig.toFixed(4);
+  state.EAR_THRESHOLD = +newThreshold.toFixed(4);
+  state.EAR_THRESHOLD_ADAPTED = true;
+  console.log(`EAR 自适应标定完成：μ=${mu.toFixed(3)}, σ=${sig.toFixed(3)}, 新阈值=${newThreshold.toFixed(3)}`);
+}
+
+function updateEMA() {
+  const rawBlink = state.blinkRate;
+  const rawHead  = Math.abs(state.headYaw)+Math.abs(state.headPitch);
+  if (state.emaBlinkRate === null) {
+    state.emaBlinkRate = rawBlink;
+    state.emaHead      = rawHead;
+  } else {
+    state.emaBlinkRate = EMA_ALPHA_BLINK*rawBlink + (1-EMA_ALPHA_BLINK)*state.emaBlinkRate;
+    state.emaHead      = EMA_ALPHA_HEAD *rawHead  + (1-EMA_ALPHA_HEAD) *state.emaHead;
+  }
+}
+
+// ============================================================
+// 5. 基线计算（漂移窗口结束后调用）
+// ============================================================
+function computeBaseline() {
+  const driftTrials = jsPsych.data.get()
+    .filter({ phase:'漂移窗口', trial_type_custom:'stimulus' })
+    .values().filter(d=>d.ema_blink!==undefined&&d.ema_blink!==null);
+  state.driftEndTime = Date.now();
+
+  if (driftTrials.length < 5) {
+    state.baseline = { blinkMean:15,blinkStd:3,headMean:0.1,headStd:0.05,rtCVMean:0.25,rtCVStd:0.08 };
+    state.driftBeta = {blink:0,head:0,rtCV:0};
+    state.driftIntercept = {blink:15,head:0.1,rtCV:0.25};
+    state.naturalBeta = {blink:0,head:0,rtCV:0};
+    console.warn('基线数据不足，使用默认值');
+    return;
+  }
+
+  const t0   = driftTrials[0].time_elapsed/1000;
+  const xs   = driftTrials.map(d=>d.time_elapsed/1000-t0);
+  const bArr = driftTrials.map(d=>d.ema_blink);
+  const hArr = driftTrials.map(d=>d.ema_head);
+  const rArr = driftTrials.filter(d=>d.rt_cv>0).map(d=>d.rt_cv);
+  const rXs  = driftTrials.filter(d=>d.rt_cv>0).map(d=>d.time_elapsed/1000-t0);
+
+  state.baseline = {
+    blinkMean: arrMean(bArr), blinkStd: Math.max(arrStd(bArr),0.5),
+    headMean:  arrMean(hArr), headStd:  Math.max(arrStd(hArr),0.01),
+    rtCVMean:  rArr.length ? arrMean(rArr) : 0.25,
+    rtCVStd:   rArr.length ? Math.max(arrStd(rArr),0.01) : 0.08,
+  };
+
+  const bReg = linearRegression(xs,bArr);
+  const hReg = linearRegression(xs,hArr);
+  const rReg = rArr.length>=5 ? linearRegression(rXs,rArr) : {beta:0,intercept:state.baseline.rtCVMean};
+  state.driftBeta      = {blink:bReg.beta,head:hReg.beta,rtCV:rReg.beta};
+  state.driftIntercept = {blink:bReg.intercept,head:hReg.intercept,rtCV:rReg.intercept};
+
+  // 自然回归系数 β（WLS，漂移窗口无反馈估计）
+  const toZ = (arr,m,s) => arr.map(v=>(v-m)/s);
+  const wlsBeta = zs => {
+    const ents=[];
+    for (let i=0;i<zs.length-1;i++) {
+      if (Math.abs(zs[i])<0.1) continue;
+      ents.push({gammaHat:-(zs[i+1]-zs[i])/zs[i], weight:Math.abs(zs[i])});
+    }
+    return computeWLSGamma(ents);
+  };
+  const bZs = toZ(bArr,state.baseline.blinkMean,state.baseline.blinkStd);
+  const hZs = toZ(hArr,state.baseline.headMean, state.baseline.headStd);
+  const rZs = rArr.length>=5 ? toZ(rArr,state.baseline.rtCVMean,state.baseline.rtCVStd) : [];
+  state.naturalBeta = {
+    blink: wlsBeta(bZs),
+    head:  wlsBeta(hZs),
+    rtCV:  rZs.length>=4 ? wlsBeta(rZs) : 0,
+  };
+  console.log('基线:', state.baseline, '| β:', state.naturalBeta);
+}
+
+// ============================================================
+// 6. 信号 z 分（使用 EMA 平滑值，β_k=0 假设）
+// ============================================================
+function getSingleZ(key) {
+  if (!state.baseline) return 0;
+  const b = state.baseline;
+  if (key==='blink') {
+    const v = state.emaBlinkRate!==null ? state.emaBlinkRate : state.blinkRate;
+    return (v-b.blinkMean)/b.blinkStd;
+  }
+  if (key==='head') {
+    const v = state.emaHead!==null ? state.emaHead : (Math.abs(state.headYaw)+Math.abs(state.headPitch));
+    return (v-b.headMean)/b.headStd;
+  }
+  if (key==='rtCV') {
+    if (state.rtHistory.length<5) return 0;
+    return (state.rtCV-b.rtCVMean)/b.rtCVStd;
+  }
+  return 0;
+}
+
+function getFusedS() {
+  if (!state.baseline) return 0;
+  const w = state.weights;
+  const hasRT = state.rtHistory.length>=5;
+  const sB = -state.directionBlink * getSingleZ('blink');
+  const sH = -state.directionHead  * getSingleZ('head');
+  const sR = hasRT ? -state.directionRT * getSingleZ('rtCV') : 0;
+  const wT = w.blink + w.head + (hasRT ? w.rtCV : 0);
+  return wT<1e-6 ? 0 : (w.blink*sB + w.head*sH + (hasRT?w.rtCV*sR:0))/wT;
+}
+
+function computeAndUpdateWeights() {
+  const gB=state.gammaBar.blink, gH=state.gammaBar.head, gR=state.gammaBar.rtCV;
+  state.directionBlink = gB>0 ? 1 : -1;
+  state.directionHead  = gH>0 ? 1 : -1;
+  state.directionRT    = gR>0 ? 1 : -1;
+  const total = Math.abs(gB)+Math.abs(gH)+Math.abs(gR);
+  state.weights = total<1e-6
+    ? {blink:0.333,head:0.333,rtCV:0.334}
+    : {blink:Math.abs(gB)/total, head:Math.abs(gH)/total, rtCV:Math.abs(gR)/total};
+  console.log('方向 d:', {b:state.directionBlink,h:state.directionHead,r:state.directionRT});
+  console.log('权重 w:', state.weights);
+}
+
+// ============================================================
+// 7. 能量计算
+// ============================================================
+function computeNeutralEnergy(key) {
+  return clamp(50 - Math.abs(getSingleZ(key))*18, 5, 95);
+}
+function fusedEnergy() { return clamp(50 + getFusedS()*20, 0, 100); }
+function computeFakeEnergy() {
+  state.fakeEnergy += (Math.random()-0.48)*4;
+  state.fakeEnergy  = clamp(state.fakeEnergy,20,80);
+  return state.fakeEnergy;
+}
+function computeEnergy() {
+  const b = state.currentBlock;
+  if (b==='Block_A') return computeNeutralEnergy('blink');
+  if (b==='Block_B') return computeNeutralEnergy('head');
+  if (b==='Block_C') return computeNeutralEnergy('rtCV');
+  if (b==='Block_D1') return D1_IS_TRUE ? fusedEnergy() : computeFakeEnergy();
+  if (b==='Block_D2') return D2_IS_TRUE ? fusedEnergy() : computeFakeEnergy();
+  return 50;
+}
+function updateEnergy() {
+  state.energyLevel = computeEnergy();
+  const ring = document.getElementById('energyRing');
+  if (!ring) return;
+  ring.style.borderColor = state.energyLevel<35 ? '#e74c3c' : state.energyLevel<65 ? '#f39c12' : '#2ecc71';
+}
+
+// ============================================================
+// 8. 方向系数聚合（Block A/B/C 结束后）
+// ============================================================
+function computeDirectionCoeff(blockName) {
+  const keyMap = {Block_A:'blink',Block_B:'head',Block_C:'rtCV'};
+  const key = keyMap[blockName];
+  if (!key) return;
+  const gBar = computeWLSGamma(state.gammaLog[key]);
+  state.gammaBar[key] = gBar;
+  console.log(`γ̄ ${blockName}: ${gBar.toFixed(3)}, n=${state.gammaLog[key].length}`);
+}
+
+// ============================================================
+// 9. RT 更新
+// ============================================================
+function updateRTHistory(rt) {
+  if (!rt||rt<=0) return;
+  state.rtHistory.push(rt);
+  if (state.rtHistory.length>20) state.rtHistory.shift();
+  if (state.rtHistory.length>=5) {
+    const m = arrMean(state.rtHistory);
+    state.rtCV = m>0 ? arrStd(state.rtHistory)/m : 0;
+  }
+}
+
+// ============================================================
+// 10. 不活跃检测（3秒无按键 → 警告；累计3次 → 无效）
+// ============================================================
+function startInactivityTimer() {
+  clearInactivityTimer();
+  if (!state.inactivityActive||state.paused||state.researcherBypass) return;
+  state.inactivityTimer = setTimeout(() => {
+    state.warningCount++;
+    if (state.warningCount > state.MAX_WARNINGS) {
+      showInvalidData();
+    } else {
+      const warn = document.getElementById('inactivityWarning');
+      document.getElementById('inactivityMsg').innerHTML =
+        `（第 <strong>${state.warningCount}</strong> / ${state.MAX_WARNINGS} 次提醒）请按 <b>F</b> 或 <b>J</b> 键作答`;
+      warn.style.display = 'block';
+      setTimeout(() => { warn.style.display = 'none'; }, 2000);
+      startInactivityTimer();
+    }
+  }, 3000);
+}
+function clearInactivityTimer() {
+  if (state.inactivityTimer) { clearTimeout(state.inactivityTimer); state.inactivityTimer=null; }
+}
+function resetInactivityTimer() {
+  if (!state.inactivityActive) return;
+  clearInactivityTimer();
+  startInactivityTimer();
+}
+function showInvalidData() {
+  state.experimentInvalidated = true;
+  state.inactivityActive = false;
+  clearInactivityTimer();
+  try { jsPsych.endExperiment(); } catch(e) {}
+  document.getElementById('jspsych-target').style.display = 'none';
+  document.getElementById('keyHint').style.display = 'none';
+  document.getElementById('ringLegend').style.display = 'none';
+  document.getElementById('cameraContainer').style.display = 'none';
+  document.getElementById('invalidScreen').classList.add('visible');
+}
+
+// ============================================================
+// 11. 键盘事件：暂停、不活跃重置、研究者绕过、管理面板
+// ============================================================
+
+// 研究者绕过弹窗（用自定义 HTML overlay 替代 prompt()）
+// 原因：window.prompt() 同步阻塞 JS 线程，导致 jsPsych 内部计时器状态错乱，
+//       jsPsych.finishTrial() 在 prompt 关闭后无法正常执行。
+function showResearcherModal() {
+  if (document.getElementById('researcherModal')) return;
+  const modal = document.createElement('div');
+  modal.id = 'researcherModal';
+  modal.style.cssText = [
+    'position:fixed','top:0','left:0','right:0','bottom:0',
+    'background:rgba(0,0,0,0.88)','z-index:9999',
+    'display:flex','align-items:center','justify-content:center'
+  ].join(';');
+  modal.innerHTML = `
+    <div style="background:#16213e;border:2px solid #3498db;border-radius:14px;padding:34px 40px;min-width:320px;text-align:center;">
+      <h3 style="color:#3498db;margin:0 0 18px;font-size:19px;">🔧 研究者内部码</h3>
+      <input id="resPwdInput" type="password" placeholder="请输入密码"
+        style="width:100%;padding:10px 14px;border-radius:7px;border:1px solid #444;
+               background:#0d1b2a;color:white;font-size:16px;margin-bottom:12px;">
+      <p id="resPwdError" style="color:#e74c3c;font-size:13px;margin:0 0 12px;display:none;">密码错误，请重试</p>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        <button id="resConfirmBtn"
+          style="padding:10px 28px;background:#3498db;color:white;border:none;border-radius:7px;font-size:15px;cursor:pointer;font-weight:bold;">
+          确认 ↵
+        </button>
+        <button id="resCancelBtn"
+          style="padding:10px 22px;background:#444;color:#ccc;border:none;border-radius:7px;font-size:15px;cursor:pointer;">
+          取消
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const input    = document.getElementById('resPwdInput');
+  const errMsg   = document.getElementById('resPwdError');
+  const confirmB = document.getElementById('resConfirmBtn');
+  const cancelB  = document.getElementById('resCancelBtn');
+
+  // 自动聚焦
+  requestAnimationFrame(() => input.focus());
+
+  function closeModal() {
+    const m = document.getElementById('researcherModal');
+    if (m) m.remove();
+  }
+
+  function doBypass() {
+    if (input.value === RESEARCHER_PASSWORD) {
+      closeModal();
+      state.researcherBypass = true;
+      state.isTestMode       = true;
+      state.inactivityActive = false;
+      clearInactivityTimer();
+      // ★ 不再调用 jsPsych.finishTrial()
+      // 当前 trial 自然结束后，所有后续 trial 均通过 conditional_function 跳过，
+      // 直到遇到下一个 makeInstruction（其 on_start 将 researcherBypass 重置为 false）
+    } else {
+      errMsg.style.display = 'block';
+      input.value = '';
+      input.focus();
+    }
+  }
+
+  confirmB.addEventListener('click', doBypass);
+  cancelB .addEventListener('click', closeModal);
+  input.addEventListener('keydown', ev => {
+    ev.stopPropagation();          // 阻止触发实验键盘监听器
+    if (ev.key === 'Enter')  doBypass();
+    if (ev.key === 'Escape') closeModal();
+  });
+}
+
+document.addEventListener('keydown', e => {
+  if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+
+  // F / J 按键：只有该 trial 内第一次按键才重置不活跃计时器并记标志
+  if ((e.key==='f'||e.key==='j'||e.key==='F'||e.key==='J') && state.inactivityActive && !state.paused) {
+    if (!state.trialHasResponse) {
+      state.trialHasResponse = true;
+      resetInactivityTimer();
+    }
+    // 第二次及以后按键：静默忽略（jsPsych 本身也只记第一次）
+    return;
+  }
+
+  // Esc：暂停
+  if (e.key==='Escape' && !state.paused && !state.researcherBypass) {
+    state.paused = true;
+    state.pauseStart = Date.now();
+    document.getElementById('pauseOverlay').classList.add('visible');
+    document.getElementById('keyHint').style.display = 'none';
+    document.getElementById('ringLegend').style.display = 'none';
+    clearInactivityTimer();
+    return;
+  }
+  // 空格：恢复暂停
+  if (e.key===' ' && state.paused) {
+    e.preventDefault();
+    state.paused = false;
+    if (state.pauseStart) { state.pauseLog.push({start:state.pauseStart,end:Date.now()}); state.pauseStart=null; }
+    document.getElementById('pauseOverlay').classList.remove('visible');
+    const activeBlocks = ['Block_A','Block_B','Block_C','Block_D1','Block_D2'];
+    if (activeBlocks.includes(state.currentBlock)) {
+      document.getElementById('keyHint').style.display = 'block';
+      document.getElementById('ringLegend').style.display = 'block';
+    }
+    if (state.inactivityActive) startInactivityTimer();
+    return;
+  }
+  // \ 键：研究者绕过
+  if (e.key==='\\' && !e.ctrlKey) {
+    e.preventDefault();
+    showResearcherModal();
+    return;
+  }
+  // Ctrl+\ ：管理员面板
+  if (e.key==='\\' && e.ctrlKey) {
+    e.preventDefault();
+    showAdminPanel();
+    return;
+  }
+});
+
+// ============================================================
+// 12. JSONBin 参与人数统计
+// ============================================================
+async function jsonbinGet() {
+  if (!JSONBIN_BIN_ID) return {count:0,open:true};
+  try {
+    const r = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`,
+      {headers:{'X-Master-Key':JSONBIN_API_KEY}});
+    return (await r.json()).record || {count:0,open:true};
+  } catch(e) { console.warn('JSONBin 读取失败，默认开启'); return {count:0,open:true}; }
+}
+async function jsonbinPut(data) {
+  if (!JSONBIN_BIN_ID) return;
+  try {
+    await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`,{
+      method:'PUT',
+      headers:{'Content-Type':'application/json','X-Master-Key':JSONBIN_API_KEY},
+      body: JSON.stringify(data)
+    });
+  } catch(e) { console.warn('JSONBin 写入失败'); }
+}
+async function incrementCount() {
+  if (!JSONBIN_BIN_ID || state.isTestMode) return;
+  const s = await jsonbinGet();
+  await jsonbinPut({...s, count:(s.count||0)+1});
+}
+
+// ============================================================
+// 13. 管理员面板
+// ============================================================
+async function showAdminPanel() {
+  const pwd = prompt('管理面板密码：');
+  if (pwd!==ADMIN_PASSWORD) { if(pwd!==null) alert('密码错误'); return; }
+  const panel = document.getElementById('adminPanel');
+  panel.style.display = 'block';
+  const s = await jsonbinGet();
+  document.getElementById('adminCount').textContent = s.count||0;
+  document.getElementById('adminStatus').textContent = s.open ? '🟢 开启中' : '🔴 已关闭';
+}
+async function adminToggle(open) {
+  const s = await jsonbinGet();
+  await jsonbinPut({...s, open});
+  document.getElementById('adminStatus').textContent = open ? '🟢 开启中' : '🔴 已关闭';
+  alert(open ? '✅ 实验已开启' : '🔴 实验已关闭，新访客将看到结束页面');
+}
+
+// ============================================================
+// 14. 参与者表单提交
+// ============================================================
+async function submitParticipantForm() {
+  const gender  = document.querySelector('input[name="gender"]:checked');
+  const reward  = document.querySelector('input[name="reward"]:checked');
+  const age     = document.getElementById('ageInput').value.trim();
+  const contact = document.getElementById('contactInput').value.trim();
+
+  if (!gender) { alert('请选择性别'); return; }
+  if (!age)    { alert('请填写年龄'); return; }
+  if (!reward) { alert('请选择奖励方式'); return; }
+  if (reward.value!=='none' && !contact) {
+    if (!confirm('您选择了奖励但未填写联系方式，确定不填写吗？')) return;
+  }
+
+  state.participantInfo = { gender:gender.value, age, reward:reward.value, contact:contact||'未填写' };
+
+  const btn = document.getElementById('submitFormBtn');
+  btn.disabled = true;
+  btn.textContent = '提交中...';
+
+  await incrementCount();
+  const ok = await sendExperimentEmail();
+
+  const cfm = document.getElementById('formConfirm');
+  cfm.style.display = 'block';
+  if (ok) {
+    cfm.textContent = '✅ 已提交！如选择了奖励，研究者将在24小时内通过微信联系您。';
+    btn.textContent = '已提交 ✓';
+  } else {
+    cfm.style.color = '#f39c12';
+    cfm.textContent = '⚠ 网络问题导致自动提交失败，请截图此页面联系研究者。';
+    btn.textContent = '提交失败';
+    console.log('=== 数据备份（请发给研究者）===\n', buildEmailBody());
+  }
+}
+
+// ============================================================
+// 15. 邮件构建与发送
+// ============================================================
+function aggregateBlock(phase) {
+  const trials = jsPsych.data.get()
+    .filter({phase,trial_type_custom:'stimulus'}).values()
+    .filter(d=>d.responded!==undefined);
+  if (!trials.length) return null;
+  const acc = trials.filter(d=>d.correct).length/trials.length;
+  const rts = trials.filter(d=>d.rt>0).map(d=>d.rt);
+  const ens = trials.filter(d=>d.energy!==undefined).map(d=>d.energy);
+  return { acc:(acc*100).toFixed(1)+'%', rt:rts.length?Math.round(arrMean(rts))+'ms':'N/A', energy:ens.length?arrMean(ens).toFixed(1):'N/A' };
+}
+
+
+
+// 行为数据正文（不含联系信息）
+function buildBehaviorBody() {
+  const now  = new Date().toISOString().slice(0,19).replace('T',' ');
+  const b    = state.baseline||{};
+  const nb   = state.naturalBeta||{};
+  const gb   = state.gammaBar||{};
+  const w    = state.weights||{};
+  const intc = state.driftIntercept||{};
+  const fmt  = (v,d=3) => (v!=null&&isFinite(v)) ? (+v).toFixed(d) : 'N/A';
+
+  const blk = name => {
+    const s = aggregateBlock(name);
+    return s ? `${name.padEnd(14)}: 准确率=${s.acc}  RT=${s.rt}  均值能量=${s.energy}` : `${name.padEnd(14)}: 无数据`;
+  };
+
+  let tlxLine='N/A';
+  try {
+    const td = jsPsych.data.get().filter({trial_type:'survey-html-form'}).last(1).values()[0]||{};
+    tlxLine = Object.entries(td.response||{}).map(([k,v])=>`${k}=${v}`).join('  ');
+  } catch(e) {}
+
+  const pTotal = state.pauseLog.reduce((s,p)=>s+(p.end-p.start),0);
+
+  return `
+专属码: ${state.completionCode||'N/A'}  |  时间: ${now}
+ABC顺序: ${BLOCK_ABC_ORDER.join('-')}
+
+--- 眨眼检测标定（自适应阈值）---
+摄像头可用: ${state.cameraReady ? '是' : '否（眨眼数据缺失）'}
+EAR 标定完成: ${state.EAR_THRESHOLD_ADAPTED ? '是' : '否（使用默认阈值）'}
+标定均值 μ_EAR: ${state.earCalibMean!=null ? state.earCalibMean : 'N/A'}
+标定标准差 σ_EAR: ${state.earCalibStd!=null ? state.earCalibStd : 'N/A'}
+最终使用阈值: ${state.EAR_THRESHOLD} （${state.EAR_THRESHOLD_ADAPTED ? '自适应' : '默认'}）
+热身 EAR 样本数: ${state.earSamples.length} 帧
+
+--- per-trial 最低 EAR（离线重标定用）---
+格式：阶段|trial序号|minEAR
+${state.trialEARLog.length > 0
+  ? state.trialEARLog.map(e=>`${e.phase}|${e.trial}|${e.minEAR}`).join('\n')
+  : '无数据（摄像头未检测到面部）'}
+
+--- 数据预处理 ---
+眨眼频率: EMA在线平滑 α=${EMA_ALPHA_BLINK}（公式: ŝₜ=α·sₜ+(1-α)·ŝₜ₋₁）
+头部运动: EMA在线平滑 α=${EMA_ALPHA_HEAD}
+按键RT-CV: 20试次滑动窗口（内在平滑）
+
+--- 个体基线（漂移窗口 OLS 回归）---
+Ŝ_baseline: 眨眼=${fmt(intc.blink,2)}  头部=${fmt(intc.head,3)}  按键CV=${fmt(intc.rtCV,3)}
+SD:         眨眼=${fmt(b.blinkStd,2)}   头部=${fmt(b.headStd,3)}  按键CV=${fmt(b.rtCVStd,3)}
+
+--- 自然回归系数 β（WLS，仅参考）---
+β眨眼=${fmt(nb.blink,4)}  β头部=${fmt(nb.head,5)}  β按键CV=${fmt(nb.rtCV,5)}
+
+--- 单信号反馈增益（A/B/C WLS聚合）---
+γ̄1眨眼: ${fmt(gb.blink)}  方向=${state.directionBlink}（${state.directionBlink===1?'↑=状态差':'↑=状态好'}）
+γ̄2头部: ${fmt(gb.head)}  方向=${state.directionHead}（${state.directionHead===1?'↑=状态差':'↑=状态好'}）
+γ̄3按键: ${fmt(gb.rtCV)}  方向=${state.directionRT}（${state.directionRT===1?'↑=状态差':'↑=状态好'}）
+
+--- 归一化权重 ---
+w1眨眼=${fmt(w.blink)}  w2头部=${fmt(w.head)}  w3按键=${fmt(w.rtCV)}
+
+--- Block D 复合反馈增益 ---
+γ̄_D=${fmt(gb.d)}  （真反馈: ${D1_IS_TRUE?'D1':'D2'}）
+
+--- Block 绩效摘要 ---
+${blk('热身(1-back)')}
+${blk('高负荷')}
+${blk('漂移窗口')}
+${blk('Block_A')}
+${blk('Block_B')}
+${blk('Block_C')}
+${blk('Block_D1')}  [${D1_IS_TRUE?'真反馈':'假反馈'}]
+${blk('Block_D2')}  [${D2_IS_TRUE?'真反馈':'假反馈'}]
+
+--- NASA-TLX ---
+${tlxLine}
+
+--- 实验控制 ---
+D1=${D1_IS_TRUE?'真':'假'}  D2=${D2_IS_TRUE?'真':'假'}
+暂停次数=${state.pauseLog.length}  总暂停=${Math.round(pTotal/1000)}s
+  `.trim();
+}
+
+// 参与者信息正文（单独存放，与行为数据隔离）
+function buildParticipantBody() {
+  const p = state.participantInfo;
+  const now = new Date().toISOString().slice(0,19).replace('T',' ');
+  return `
+专属码: ${state.completionCode||'N/A'}  |  时间: ${now}
+性别: ${p.gender||'未填写'}
+年龄: ${p.age||'未填写'}
+奖励: ${p.reward||'未填写'}
+联系方式: ${p.contact||'未填写'}
+  `.trim();
+}
+
+// 合并兼容旧代码调用
+function buildEmailBody() {
+  return buildBehaviorBody() + '\n\n========== 参与者信息 ==========\n' + buildParticipantBody();
+}
+
+async function sendExperimentEmail() {
+  if (state.isTestMode) {
+    console.log('[测试模式] 跳过发送。\n=== 行为数据 ===\n', buildBehaviorBody(),
+                '\n=== 参与者信息 ===\n', buildParticipantBody());
+    return true;
+  }
+  if (!EMAILJS_SERVICE_ID || EMAILJS_SERVICE_ID==='YOUR_SERVICE_ID') {
+    console.warn('⚠ EmailJS 未配置，跳过发送。请在代码顶部填写三个 ID。');
+    return false;
+  }
+
+  const code = state.completionCode||'--';
+  const date = new Date().toLocaleDateString('zh-CN');
+
+  // ── 两个部分合为一封邮件，通过两个模板变量区分
+  // EmailJS 模板建议：
+  //   主题：{{subject}}
+  //   正文：
+  //   【行为数据】
+  //   {{message1}}
+  //
+  //   【参与者信息】
+  //   {{message2}}
+  try {
+    const res = await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+      subject:  `[N-back] ${code} | ${date}`,
+      message1: buildBehaviorBody(),
+      message2: buildParticipantBody(),
+    });
+    console.log('✅ 邮件发送成功 status:', res.status, '| text:', res.text);
+    return true;
+  } catch(e) {
+    // 详细错误信息帮助调试
+    console.error('❌ EmailJS 发送失败');
+    console.error('status:', e.status);
+    console.error('text:', e.text);
+    console.error('完整对象:', JSON.stringify(e));
+    // 降级备份：打印到控制台，截图可找回数据
+    console.log('\n=== 数据备份（请截图或复制）===\n', buildEmailBody());
+    return false;
+  }
+}
+
+// ============================================================
+// 16. 序列生成
+// ============================================================
+const LETTERS        = ['B','C','D','F','G','H','J','K'];
+const STIM_DURATION  = 500;
+const TRIAL_DURATION = 2000;
+const TARGET_RATE    = 0.33;
+
+const BLOCK_TRIALS = {
+  warmup:15, highload:60, drift:60,
+  blockA:45, blockB:30, blockC:60,
+  blockD1:90, blockD2:90,
+};
+
+function generateSequence(n, nBack, rate) {
+  const seq=[], isTgt=[];
+  for (let i=0;i<n;i++) {
+    if (i>=nBack && Math.random()<rate) { seq.push(seq[i-nBack]); isTgt.push(true); }
+    else {
+      let l, att=0;
+      do { l=LETTERS[Math.floor(Math.random()*LETTERS.length)]; att++; }
+      while (i>=nBack && l===seq[i-nBack] && att<20);
+      seq.push(l); isTgt.push(false);
+    }
+  }
+  return {sequence:seq,isTarget:isTgt};
+}
+
+const sequences = {
+  warmup:   generateSequence(BLOCK_TRIALS.warmup,   1, TARGET_RATE),
+  highload: generateSequence(BLOCK_TRIALS.highload,  2, TARGET_RATE),
+  drift:    generateSequence(BLOCK_TRIALS.drift,     2, TARGET_RATE),
+  blockA:   generateSequence(BLOCK_TRIALS.blockA,    2, TARGET_RATE),
+  blockB:   generateSequence(BLOCK_TRIALS.blockB,    2, TARGET_RATE),
+  blockC:   generateSequence(BLOCK_TRIALS.blockC,    2, TARGET_RATE),
+  blockD1:  generateSequence(BLOCK_TRIALS.blockD1,   2, TARGET_RATE),
+  blockD2:  generateSequence(BLOCK_TRIALS.blockD2,   2, TARGET_RATE),
+};
+
+// ============================================================
+// 17. N-back Block 构建
+// ============================================================
+const BLOCK_ABC_CONFIG = {
+  A: {seq:()=>sequences.blockA, phaseName:'Block_A', gammaKey:'blink', title:'Block A（约1.5分钟）', signalDesc:'眨眼频率'},
+  B: {seq:()=>sequences.blockB, phaseName:'Block_B', gammaKey:'head',  title:'Block B（约1分钟）',   signalDesc:'头部姿态稳定性'},
+  C: {seq:()=>sequences.blockC, phaseName:'Block_C', gammaKey:'rtCV',  title:'Block C（约2分钟）',   signalDesc:'按键节律稳定性'},
+};
+
+const TWO_TASKS_HTML = `
+  <div class="task-box">
+    📌 <strong>本阶段核心任务（两点）：</strong><br>
+    ① <strong>首要：</strong>尽力保证字母判断的<strong>准确率</strong><br>
+    ② <strong>在此基础上：</strong>尽量让信号环保持<strong style="color:#2ecc71">绿色</strong>
+  </div>`;
+
+function createNBackBlock(seqObj, blockName, showFeedback, nBack) {
+  const {sequence,isTarget} = seqObj;
+  const trials = [];
+
+  const gammaKey =
+    blockName==='Block_A' ? 'blink' :
+    blockName==='Block_B' ? 'head'  :
+    blockName==='Block_C' ? 'rtCV'  :
+    (blockName==='Block_D1'||blockName==='Block_D2') ? 'd' : null;
+
+  const getBeta = () => {
+    if (gammaKey==='d') {
+      const w=state.weights;
+      return w.blink*state.naturalBeta.blink+w.head*state.naturalBeta.head+w.rtCV*state.naturalBeta.rtCV;
+    }
+    return 0; // β_k=0
+  };
+
+  sequence.forEach((letter, i) => {
+    const isWarmup = i < nBack;
+
+    // ── 所有 trial 用 conditional_function 包裹 ──────────────────
+    // jsPsych 7 原生机制：conditional_function 在 trial 启动前检查，
+    // 返回 false 则完全跳过该 trial（不触发 on_start/on_load/on_finish）。
+    // 这是比 finishTrial() 更可靠的跳过方式，避免插件内部状态冲突。
+    const wrap = trial => ({
+      timeline: [trial],
+      conditional_function: () => !state.researcherBypass
+    });
+
+    // 注视点
+    trials.push(wrap({
+      type: jsPsychHtmlKeyboardResponse,
+      stimulus: '<div class="fixation">+</div>',
+      choices: 'NO_KEYS',
+      trial_duration: 300,
+      on_start: function() {
+        state.currentBlock = blockName;
+        state.inactivityActive = false;
+        clearInactivityTimer();
+        document.getElementById('keyHint').style.display = 'block';
+        document.getElementById('ringLegend').style.display = 'block';
+      },
+      data: {phase:blockName, trial_type_custom:'fixation'}
+    }));
+
+    // 字母刺激
+    const noActionHint = isWarmup
+      ? `<div class="no-action-hint">第 ${i+1} 个字母 — 无需作答，请先记住</div>`
+      : '';
+
+    trials.push(wrap({
+      type: jsPsychHtmlKeyboardResponse,
+      stimulus: () => `
+        <div class="letter-display">${letter}</div>
+        ${noActionHint}
+        <div class="phase-label">${blockName} &nbsp;|&nbsp; ${i+1} / ${sequence.length}</div>
+        <div id="energyRing"></div>
+      `,
+      choices: ['f','j'],
+      trial_duration: TRIAL_DURATION,
+      stimulus_duration: STIM_DURATION,
+      response_ends_trial: false,
+      on_start: function() {
+        state.trialHasResponse = false;
+        state.currentTrialMinEAR = 1.0;   // 重置 per-trial 最低 EAR
+        if (!isWarmup) {
+          state.inactivityActive = true;
+          startInactivityTimer();
+        }
+      },
+      on_finish: function(data) {
+        state.inactivityActive = false;
+        state.trialHasResponse = false;
+        clearInactivityTimer();
+
+        // 记录 per-trial 最低 EAR（离线重标定用）
+        const minEAR = state.currentTrialMinEAR < 1.0 ? +state.currentTrialMinEAR.toFixed(3) : null;
+        data.min_ear = minEAR;
+        if (minEAR !== null) {
+          state.trialEARLog.push({ phase: blockName, trial: i, minEAR });
+        }
+
+        const responded = data.response!==null;
+        const correct = (isTarget[i]&&data.response==='j')||(!isTarget[i]&&data.response==='f');
+
+        data.phase             = blockName;
+        data.trial_index_block = i;
+        data.letter            = letter;
+        data.is_target         = isTarget[i];
+        data.responded         = responded;
+        data.correct           = correct;
+        data.blink_rate        = state.blinkRate;
+        data.ema_blink         = state.emaBlinkRate!==null ? +state.emaBlinkRate.toFixed(2) : null;
+        data.head_yaw          = +state.headYaw.toFixed(3);
+        data.head_pitch        = +state.headPitch.toFixed(3);
+        data.ema_head          = state.emaHead!==null ? +state.emaHead.toFixed(3) : null;
+        data.rt_cv             = +state.rtCV.toFixed(3);
+        data.energy            = +state.energyLevel.toFixed(1);
+        data.trial_type_custom = 'stimulus';
+        if (blockName==='Block_D1') data.feedback_type = D1_IS_TRUE?'true':'fake';
+        if (blockName==='Block_D2') data.feedback_type = D2_IS_TRUE?'true':'fake';
+
+        if (responded) updateRTHistory(data.rt);
+
+        // γ̂ 逐 trial 计算
+        if (gammaKey && state.baseline && !isWarmup) {
+          if (gammaKey==='d') {
+            const curr = getFusedS();
+            data.fused_s = +curr.toFixed(3);
+            if (state.prevFusedS!==null) {
+              const dS = state.prevFusedS;
+              if (Math.abs(dS)>0.05) {
+                const gh = -(curr-state.prevFusedS)/dS - getBeta();
+                state.gammaLog.d.push({gammaHat:gh, weight:Math.abs(dS)});
+                data.gamma_hat = +gh.toFixed(3);
+              }
+            }
+            state.prevFusedS = curr;
+          } else {
+            const curr = getSingleZ(gammaKey);
+            data.single_z = +curr.toFixed(3);
+            const prev = state.prevZ[gammaKey];
+            if (prev!==null) {
+              const dS = prev;
+              if (Math.abs(dS)>0.05) {
+                const gh = -(curr-prev)/dS; // β_k=0
+                state.gammaLog[gammaKey].push({gammaHat:gh, weight:Math.abs(dS)});
+                data.gamma_hat = +gh.toFixed(3);
+              }
+            }
+            state.prevZ[gammaKey] = curr;
+          }
+        }
+      }
+    }));
+
+    // 热身即时反馈
+    if (showFeedback) {
+      trials.push(wrap({
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: () => {
+          const last = jsPsych.data.get().last(1).values()[0];
+          const ok = last&&last.correct;
+          return `<div style="font-size:52px;margin-top:80px;color:${ok?'#2ecc71':'#e74c3c'}">${ok?'✓ 正确':'✗ 错误'}</div>`;
+        },
+        choices: 'NO_KEYS',
+        trial_duration: 500,
+        data: {phase:blockName, trial_type_custom:'feedback'}
+      }));
+    }
+  });
+  return trials;
+}
+
+// ============================================================
+// 18. 辅助 trial
+// ============================================================
+const RING_HTML = `
+  <div style="background:#0d1b2a;padding:10px 14px;border-radius:8px;font-size:13px;margin-top:10px">
+    信号环颜色：
+    <span style="color:#2ecc71">●</span> 绿色=偏离小（稳定）&nbsp;
+    <span style="color:#f39c12">●</span> 黄色=偏离中等&nbsp;
+    <span style="color:#e74c3c">●</span> 红色=偏离较大
+  </div>`;
+
+function makeInstruction(html) {
+  return {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: `<div class="instruction-box">${html}
+      <p style="text-align:center;font-size:14px;color:#555;margin-top:18px">按 <b>空格键</b> 继续</p></div>`,
+    choices: [' '],
+    on_start: function() {
+      state.researcherBypass = false;   // 研究者绕过在指导语处停止
+      state.inactivityActive = false;
+      state.trialHasResponse = false;
+      state.warningCount     = 0;       // 每个新阶段重置警告计数
+      clearInactivityTimer();
+      document.getElementById('keyHint').style.display = 'none';
+      document.getElementById('ringLegend').style.display = 'none';
+    }
+  };
+}
+
+function makeCountdownRest(seconds, label) {
+  // conditional_function: 研究者绕过时整个 trial 被跳过
+  return {
+    timeline: [{
+      type: jsPsychHtmlKeyboardResponse,
+      stimulus: `<div class="instruction-box" style="text-align:center">
+        <h2>🕐 ${label}</h2>
+        <p>请<strong>闭眼休息</strong>，放松面部和颈部肌肉。</p>
+        <div id="countdownDisplay" style="font-size:64px;color:#f39c12;margin:20px 0">${seconds}</div>
+        <p style="color:#666;font-size:14px">倒计时结束后自动继续 &nbsp;|&nbsp; 或按 <b>空格键</b> 提前继续</p>
+      </div>`,
+      choices: [' '],
+      trial_duration: seconds*1000,
+      on_start: function() {
+        state.currentBlock = 'rest';
+        state.inactivityActive = false;
+        clearInactivityTimer();
+        document.getElementById('keyHint').style.display = 'none';
+        document.getElementById('ringLegend').style.display = 'none';
+      },
+      on_load: function() {
+        let rem = seconds;
+        const iv = setInterval(() => {
+          rem--;
+          const el = document.getElementById('countdownDisplay');
+          if (el) el.textContent = Math.max(rem,0);
+          if (rem<=0) clearInterval(iv);
+        },1000);
+      }
+    }],
+    conditional_function: () => !state.researcherBypass
+  };
+}
+
+function makeTrigger(label, fn, ms=600) {
+  // conditional_function: 研究者绕过时跳过，fn() 不被调用
+  return {
+    timeline: [{
+      type: jsPsychHtmlKeyboardResponse,
+      stimulus: `<div style="margin-top:200px;color:#333;font-size:14px">${label}</div>`,
+      choices: 'NO_KEYS',
+      trial_duration: ms,
+      on_start: function() { fn(); }
+    }],
+    conditional_function: () => !state.researcherBypass
+  };
+}
+
+const baselineTrigger      = makeTrigger('正在校准个体基线...', computeBaseline);
+const earCalibTrigger      = makeTrigger('正在标定眼动阈值...', calibrateEARThreshold, 500);
+const weightsUpdateTrigger = makeTrigger('正在整合信号权重...', computeAndUpdateWeights, 400);
+
+function makeDirectionTrigger(blockName) {
+  return makeTrigger('正在分析信号方向...', ()=>computeDirectionCoeff(blockName), 400);
+}
+function makeGammaTrigger(blockName) {
+  return makeTrigger('正在计算反馈增益...', ()=>{
+    const isTrue=(blockName==='Block_D1'&&D1_IS_TRUE)||(blockName==='Block_D2'&&D2_IS_TRUE);
+    if (isTrue) { state.gammaBar.d=computeWLSGamma(state.gammaLog.d); console.log('γ̄_D=',state.gammaBar.d.toFixed(3)); }
+  }, 400);
+}
+
+// ============================================================
+// 19. NASA-TLX
+// ============================================================
+function makeNASATLX() {
+  const dims = [
+    {name:'mental_demand',   label:'脑力需求',  desc:'任务需要多少思考、判断和记忆？'},
+    {name:'physical_demand', label:'体力需求',  desc:'任务需要多少身体活动（如眼手协调）？'},
+    {name:'temporal_demand', label:'时间压力',  desc:'任务节奏有多紧迫、时间是否充裕？'},
+    {name:'performance',     label:'完成效果',  desc:'你对自己的表现有多满意？（左=非常满意）'},
+    {name:'effort',          label:'努力程度',  desc:'你为完成任务付出了多少努力？'},
+    {name:'frustration',     label:'挫败感',    desc:'你感到多沮丧、烦躁或压力？'},
+  ];
+  const html = dims.map(d=>`
+    <div class="tlx-item">
+      <label>${d.label}</label>
+      <span class="tlx-desc">${d.desc}</span>
+      <div class="slider-row">
+        <span>低</span>
+        <input type="range" name="${d.name}" min="0" max="100" value="50"
+          oninput="document.getElementById('val_${d.name}').textContent=this.value">
+        <span>高</span>
+      </div>
+      <div class="slider-val" id="val_${d.name}">50</div>
+    </div>`).join('');
+  return {
+    type: jsPsychSurveyHtmlForm,
+    preamble: `<div style="max-width:600px;margin:0 auto">
+      <h2 style="text-align:center">主观负荷评估（NASA-TLX）</h2>
+      <p style="text-align:center;color:#888;font-size:15px">请根据整体体验拖动滑块评分</p></div>`,
+    html: `<div style="max-width:600px;margin:0 auto">${html}</div>`,
+    button_label: '提交问卷',
+    on_start: function() {
+      state.inactivityActive = false;
+      clearInactivityTimer();
+      document.getElementById('keyHint').style.display = 'none';
+      document.getElementById('ringLegend').style.display = 'none';
+    }
+  };
+}
+
+// ============================================================
+// 20. 完整 Timeline
+// ============================================================
+let jsPsych;
+
+function buildTimeline() {
+  const tl = [];
+
+  // ── 摄像头自检页（在所有指导语之前）──────────────────────────
+  // 让被试确认摄像头画面中能清晰看到自己的眼睛，
+  // 同时系统检测是否已有有效 EAR 帧，不满足条件则提示调整。
+  tl.push({
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: `
+      <div class="instruction-box" style="text-align:center;">
+        <h2>📷 摄像头自检</h2>
+        <p>实验需要通过摄像头检测你的<strong>眨眼</strong>和<strong>头部姿态</strong>。</p>
+        <p style="margin-top:10px;">请查看右上角摄像头小窗，确认：</p>
+        <div class="highlight-box" style="text-align:left;margin:14px 0;">
+          ✅ 能清晰看到你的<strong>完整面部</strong>（尤其是眼睛）<br>
+          ✅ 光线充足，脸部不过亮或过暗<br>
+          ✅ 头部正对摄像头，不过度偏侧<br>
+          ✅ 如戴眼镜，请确认镜片无严重反光
+        </div>
+        <p style="color:#f39c12;font-size:14px;">
+          ⚠ 若小窗中看不清眼睛，请调整光线或坐姿后再继续。<br>
+          摄像头检测失效会影响眨眼信号的准确性。
+        </p>
+        <p id="earCheckMsg" style="color:#888;font-size:13px;margin-top:10px;">
+          正在检测摄像头信号...
+        </p>
+        <p style="text-align:center;font-size:14px;color:#555;margin-top:18px">
+          确认无误后按 <b>空格键</b> 继续
+        </p>
+      </div>`,
+    choices: [' '],
+    on_start: function() {
+      state.inactivityActive = false;
+      state.warningCount = 0;
+      clearInactivityTimer();
+      document.getElementById('keyHint').style.display = 'none';
+      document.getElementById('ringLegend').style.display = 'none';
+      // 延迟1秒后检查 EAR 是否有效
+      setTimeout(() => {
+        const msg = document.getElementById('earCheckMsg');
+        if (!msg) return;
+        if (!state.cameraReady) {
+          msg.style.color = '#e74c3c';
+          msg.textContent = '⚠ 摄像头未连接，将跳过眨眼检测（其余数据正常收集）';
+        } else {
+          msg.style.color = '#2ecc71';
+          msg.textContent = '✅ 摄像头信号正常，可以继续';
+        }
+      }, 1000);
+    }
+  });
+
+  // 全局指导语
+  tl.push(makeInstruction(`
+    <h2>欢迎参加本实验</h2>
+    <p>本实验共约 <strong>17.5 分钟</strong>，请在安静、光线充足的环境中全程完成，请勿离座。</p>
+    <hr class="section">
+    <p><strong>任务：</strong>屏幕中央依次呈现字母，请判断：</p>
+    <div class="highlight-box">
+      当前字母是否与 <strong>N 个之前</strong> 的字母相同？<br><br>
+      🟦 相同 → 按 <strong>J</strong>（右手食指）&emsp;
+      🟥 不同 → 按 <strong>F</strong>（左手食指）
+    </div>
+    <hr class="section">
+    <p>屏幕右侧会出现一个<strong>信号环</strong>，根据你的行为反应实时变化。</p>
+    ${RING_HTML}
+    ${TWO_TASKS_HTML}
+    <p style="font-size:13px;color:#666;margin-top:12px">
+      ⚠ 紧急情况可按 <b>Esc</b> 暂停，非必要请勿使用，以免影响数据质量。
+    </p>
+  `));
+
+  // 热身 1-back（15字母，约30秒）
+  tl.push(makeInstruction(`
+    <h2>🔥 热身阶段（约30秒）</h2>
+    <p>使用 <strong>1-back</strong> 规则：判断当前字母是否与<strong>紧邻的上一个</strong>字母相同。</p>
+    <div class="highlight-box">
+      B → <span style="color:#f39c12;font-weight:bold">B</span>（相同，按 <b>J</b>）&emsp;
+      B → C（不同，按 <b>F</b>）
+    </div>
+    <p>💡 <strong>第1个字母出现时无需作答</strong>（还没有"上一个"可比较），从第2个字母开始作答。</p>
+    <p>本阶段有即时正误反馈，热身数据不计入分析。</p>
+    <p style="font-size:13px;color:#888;">🔍 系统将在此阶段自动标定你的个人眨眼检测参数。</p>
+  `));
+  tl.push(...createNBackBlock(sequences.warmup, '热身(1-back)', true, 1));
+  // 热身结束后立即标定 EAR 阈值
+  tl.push(earCalibTrigger);
+
+  // 2-back 说明
+  tl.push(makeInstruction(`
+    <h2>⚡ 正式开始：2-back</h2>
+    <p>从现在起使用 <strong>2-back</strong> 规则：判断当前字母是否与 <strong>2个之前</strong> 的字母相同。</p>
+    <div class="highlight-box">
+      B → C → <span style="color:#f39c12;font-weight:bold">B</span>（与2前相同，按 <b>J</b>）<br>
+      B → C → D（不同，按 <b>F</b>）
+    </div>
+    <p>💡 <strong>每段任务前2个字母出现时无需作答</strong>，从第3个开始。</p>
+    <p>此后所有阶段均使用 2-back，无正误反馈，请全力作答。</p>
+  `));
+  tl.push(...createNBackBlock(sequences.highload, '高负荷', false, 2));
+
+  // 漂移窗口
+  tl.push(makeInstruction(`
+    <h2>📊 状态基准采集（约2分钟）</h2>
+    <p>继续 2-back 任务，保持自然节奏。系统将建立你的<strong>个体状态基准</strong>。</p>
+    <p>💡 前2个字母出现时无需作答。</p>
+  `));
+  tl.push(...createNBackBlock(sequences.drift, '漂移窗口', false, 2));
+  tl.push(baselineTrigger);
+
+  // Block A/B/C（顺序随机）
+  for (const letter of BLOCK_ABC_ORDER) {
+    const cfg = BLOCK_ABC_CONFIG[letter];
+    tl.push(makeInstruction(`
+      <h2>${cfg.title}</h2>
+      <p>继续 2-back 任务。</p>
+      <p>右侧<strong>信号环</strong>将根据你的 <strong>${cfg.signalDesc}</strong> 实时变化。</p>
+      ${RING_HTML}
+      ${TWO_TASKS_HTML}
+      <p style="font-size:13px;color:#666;margin-top:8px">💡 前2个字母出现时无需作答。</p>
+    `));
+    tl.push(...createNBackBlock(cfg.seq(), cfg.phaseName, false, 2));
+    tl.push(makeDirectionTrigger(cfg.phaseName));
+  }
+  tl.push(weightsUpdateTrigger);
+
+  // Block D-1
+  tl.push(makeInstruction(`
+    <h2>Block D-1（约3分钟）</h2>
+    <p>继续 2-back 任务。信号环将综合 <strong>眨眼 + 头部 + 按键</strong> 三种信号实时变化。</p>
+    ${RING_HTML}
+    ${TWO_TASKS_HTML}
+    <p style="font-size:13px;color:#666;margin-top:8px">💡 前2个字母出现时无需作答。</p>
+  `));
+  tl.push(...createNBackBlock(sequences.blockD1, 'Block_D1', false, 2));
+  tl.push(makeGammaTrigger('Block_D1'));
+
+  // 清洗期
+  tl.push(makeCountdownRest(60, '清洗期休息（1分钟）'));
+
+  // Block D-2
+  tl.push(makeInstruction(`
+    <h2>Block D-2（约3分钟）</h2>
+    <p>最后一段 2-back，请保持认真。信号环综合三种信号实时变化。</p>
+    ${RING_HTML}
+    ${TWO_TASKS_HTML}
+    <p style="font-size:13px;color:#666;margin-top:8px">💡 前2个字母出现时无需作答。</p>
+  `));
+  tl.push(...createNBackBlock(sequences.blockD2, 'Block_D2', false, 2));
+  tl.push(makeGammaTrigger('Block_D2'));
+
+  // NASA-TLX
+  tl.push(makeInstruction(`
+    <h2>任务部分完成！🙏</h2>
+    <p>感谢坚持到这里。接下来是一份简短的主观评估（约1分钟），请根据整体实验体验作答。</p>
+  `));
+  tl.push(makeNASATLX());
+
+  return tl;
+}
+
+// ============================================================
+// 21. 实验启动
+// ============================================================
+async function startExperiment() {
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('loadingScreen').style.display = 'none';
+
+  jsPsych = initJsPsych({
+    display_element: 'jspsych-target',
+    on_finish: function() {
+      if (state.experimentInvalidated) return;
+
+      jsPsych.data.addProperties({
+        D1_feedback:      D1_IS_TRUE?'true':'fake',
+        D2_feedback:      D2_IS_TRUE?'true':'fake',
+        block_abc_order:  BLOCK_ABC_ORDER.join(''),
+        pause_count:      state.pauseLog.length,
+        total_pause_ms:   state.pauseLog.reduce((s,p)=>s+(p.end-p.start),0),
+      });
+
+      state.completionCode = generateCode();
+      document.getElementById('codeDisplay').textContent = state.completionCode;
+      document.getElementById('completionScreen').classList.add('visible');
+      document.getElementById('keyHint').style.display = 'none';
+      document.getElementById('ringLegend').style.display = 'none';
+      state.inactivityActive = false;
+      clearInactivityTimer();
+    }
+  });
+
+  jsPsych.run(buildTimeline());
+}
+
+// ============================================================
+// 22. 页面加载：检查实验状态 → 加载模型 → 初始化 EmailJS
+// ============================================================
+window.addEventListener('load', async () => {
+  const status = document.getElementById('loadingStatus');
+
+  // 检查实验是否已关闭
+  const expStatus = await jsonbinGet();
+  if (!expStatus.open || expStatus.count >= MAX_PARTICIPANTS) {
+    document.getElementById('loadingScreen').style.display = 'none';
+    document.getElementById('closedScreen').classList.add('visible');
+    return;
+  }
+
+  // 初始化 EmailJS（页面加载时即完成，避免发送时失败）
+  try {
+    if (EMAILJS_PUBLIC_KEY && EMAILJS_PUBLIC_KEY!=='YOUR_PUBLIC_KEY') {
+      emailjs.init(EMAILJS_PUBLIC_KEY);
+      console.log('✅ EmailJS 初始化完成');
+    } else {
+      console.warn('⚠ EmailJS Public Key 未填写，邮件功能不可用');
+    }
+  } catch(e) { console.warn('EmailJS 初始化失败:', e); }
+
+  // 加载面部检测模型
+  try {
+    status.textContent = '正在加载人脸检测模型 (1/2)...';
+    await faceapi.nets.tinyFaceDetector.loadFromUri('./models');
+    status.textContent = '正在加载关键点模型 (2/2)...';
+    await faceapi.nets.faceLandmark68Net.loadFromUri('./models');
+    status.textContent = '正在申请摄像头权限...';
+    await initCamera();
+    status.textContent = '✅ 准备就绪';
+  } catch(e) {
+    console.error('初始化错误:', e);
+    status.textContent = '⚠ 摄像头不可用，实验仍可继续（无生理指标）';
+  }
+  document.getElementById('startBtn').style.display = 'inline-block';
+});
+</script>
 </body>
 </html>
